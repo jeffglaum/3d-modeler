@@ -16,5 +16,9 @@ web-sys = { version = "0.3", features = [
     "WebGlBuffer",
     "WebGlProgram",
     "WebGlShader",
-    "WebGlUniformLocation", ] }
+    "WebGlUniformLocation", 
+    "WebGlVertexArrayObject",
+    ] }
 js-sys = "0.3"
+cgmath = "0.18.0"
+#rand = "0.9.1"

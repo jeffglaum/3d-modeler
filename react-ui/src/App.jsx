@@ -69,7 +69,7 @@ function App() {
   return (
     <div className="w-full p-4 bg-gray-100 flex justify-start">
       <DropdownAppBar />
-      <canvas ref={canvasRef} style={{width: '100%', height: '1000px',}} />
+      <canvas ref={canvasRef} width={1920} height={1080} />
     </div>
   );
 }
