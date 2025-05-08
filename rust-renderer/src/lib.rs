@@ -1,9 +1,10 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader};
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader, WebGlUniformLocation};
 use std::mem;
-use cgmath::{perspective, Deg, InnerSpace, Matrix4, Point3, Vector3};
+use cgmath::{perspective, Deg, InnerSpace, Matrix4, Point3, SquareMatrix, Vector3};
 use rand::Rng;
-use instant::Instant;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 
 fn compile_shader(
@@ -166,9 +167,6 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     // Projection matrix
     let projection = perspective(Deg(45.0), 1920.0 / 1080.0, 0.1, 100.0);
 
-    // Capture current time
-    let start_time = Instant::now();
-
     // Choose a random axis of rotation
     let mut rng = rand::rng();
     let rotation_axis = Vector3::new(
@@ -177,14 +175,8 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         rng.random_range(-1.0..1.0),
     ).normalize();
 
-    gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
-
-    // // Calculate rotation angle based on time passage
-    let elapsed = start_time.elapsed().as_secs_f32();
-    let angle = Deg(elapsed * 45.0); // 45 degrees per second
-
     // Adjust the model matrix by rotating it around the randomly-chosen vector
-    let model = Matrix4::from_axis_angle(rotation_axis, angle);
+    let model = Matrix4::identity();
 
     let model_loc = gl.get_uniform_location(&program, "model").ok_or("Could not get model uniform location")?;
     let view_loc = gl.get_uniform_location(&program, "view").ok_or("Could not get view uniform location")?;
@@ -206,8 +198,40 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     // Select the triangle vao into context
     gl.bind_vertex_array(Some(&vao));
 
-    // Draw
-    gl.draw_arrays(GL::TRIANGLES, 0, 3);
+    // Animate the rotation
+    animate(0.0, gl, model_loc, rotation_axis);
 
     Ok(())
+}
+
+fn animate(start_time: f64, gl: GL, model_loc: WebGlUniformLocation, rotation_axis: Vector3<f32>) {
+    let f: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
+    let g = f.clone();
+
+    let closure = Closure::wrap(Box::new(move |time: f64| {
+
+        gl.clear_color(0.0, 0.0, 0.0, 1.0);
+
+        gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
+
+        let angle = Deg(((time - start_time) / 1000.0) as f32 * 45.0); // 45 degrees per second
+        let model = Matrix4::from_axis_angle(rotation_axis, angle);
+        gl.uniform_matrix4fv_with_f32_array(Some(&model_loc), false, &matrix4_to_array(&model));
+
+        // Clear and draw
+        gl.clear_color(0.0, 0.0, 0.0, 1.0);
+        gl.clear(GL::COLOR_BUFFER_BIT);
+        gl.draw_arrays(GL::TRIANGLES, 0, 3);
+
+        // Schedule next frame
+        web_sys::window()
+            .unwrap()
+            .request_animation_frame(f.borrow().as_ref().unwrap().as_ref().unchecked_ref())
+            .unwrap();
+    }) as Box<dyn FnMut(f64)>);
+
+    *g.borrow_mut() = Some(closure);
+    web_sys::window().unwrap()
+        .request_animation_frame(g.borrow().as_ref().unwrap().as_ref().unchecked_ref())
+        .unwrap();
 }
