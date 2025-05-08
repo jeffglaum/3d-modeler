@@ -2,8 +2,9 @@ use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader};
 use std::mem;
 use cgmath::{perspective, Deg, InnerSpace, Matrix4, Point3, Vector3};
-//use std::time::Instant;
-//use rand::Rng;
+use rand::Rng;
+use instant::Instant;
+
 
 fn compile_shader(
     gl: &GL,
@@ -157,7 +158,7 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 
     // View matrix
     let view = Matrix4::look_at_rh(
-        Point3::new(0.0, 0.0, 2.0),
+        Point3::new(0.0, 0.0, 4.0),
         Point3::new(0.0, 0.0, 0.0),
         Vector3::unit_y(),
     );
@@ -166,23 +167,21 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let projection = perspective(Deg(45.0), 1920.0 / 1080.0, 0.1, 100.0);
 
     // Capture current time
-    //let start_time = Instant::now();
+    let start_time = Instant::now();
 
     // Choose a random axis of rotation
-    //let mut rng = rand::rng();
+    let mut rng = rand::rng();
     let rotation_axis = Vector3::new(
-        //rng.random_range(-1.0..1.0),
-        //rng.random_range(-1.0..1.0),
-        //rng.random_range(-1.0..1.0),
-        0.0, 0.0, 1.0,
+        rng.random_range(-1.0..1.0),
+        rng.random_range(-1.0..1.0),
+        rng.random_range(-1.0..1.0),
     ).normalize();
 
     gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
 
     // // Calculate rotation angle based on time passage
-    // let elapsed = start_time.elapsed().as_secs_f32();
-    // let angle = Deg(elapsed * 45.0); // 45 degrees per second
-    let angle = Deg(1.0 * 45.0); // 45 degrees per second
+    let elapsed = start_time.elapsed().as_secs_f32();
+    let angle = Deg(elapsed * 45.0); // 45 degrees per second
 
     // Adjust the model matrix by rotating it around the randomly-chosen vector
     let model = Matrix4::from_axis_angle(rotation_axis, angle);
