@@ -1,5 +1,6 @@
-import React, { useEffect, useRef} from 'react';
-import init, { start_rendering } from 'rust-renderer'; // from WASM
+import React, { useEffect, useRef } from 'react';
+//import init, { start_rendering, handle_mouse_click } from 'rust-renderer'; // from WASM
+import init, * as wasm from 'rust-renderer';
 import { AppBar, Toolbar, Button, Menu, MenuItem } from '@mui/material';
 
 function DropdownAppBar() {
@@ -57,19 +58,32 @@ function App() {
 
   useEffect(() => {
     const run = async () => {
-      await init(); // initialize WASM module
       const canvas = canvasRef.current;
+      const wasmModule = await init();
+
+      window.wasm = wasm;
+
       if (canvas) {
-        start_rendering(canvas);
+        wasm.start_rendering(canvas);
       }
     };
     run();
   }, []);
 
+  const handleClick = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (window.wasm && window.wasm.handle_mouse_click) {
+      window.wasm.handle_mouse_click(x, y);
+    }
+  };
+
   return (
     <div className="w-full p-4 bg-gray-100 flex justify-start">
       <DropdownAppBar />
-      <canvas ref={canvasRef} width={1920} height={1080} />
+      <canvas ref={canvasRef} width={1920} height={1080} onClick={handleClick}/>
     </div>
   );
 }

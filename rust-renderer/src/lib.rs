@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader, WebGlUniformLocation};
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader, WebGlUniformLocation, console};
 use std::mem;
 use cgmath::{perspective, Deg, InnerSpace, Matrix4, Point3, SquareMatrix, Vector3};
 use rand::Rng;
@@ -56,6 +56,11 @@ pub fn matrix4_to_array(matrix: &Matrix4<f32>) -> [f32; 16] {
         matrix.z.x, matrix.z.y, matrix.z.z, matrix.z.w,
         matrix.w.x, matrix.w.y, matrix.w.z, matrix.w.w,
     ]
+}
+
+#[wasm_bindgen]
+pub fn handle_mouse_click(x: f64, y: f64) {
+    web_sys::console::log_1(&format!("INFO: mouse click at: {}, {}", x, y).into());
 }
 
 #[wasm_bindgen]
