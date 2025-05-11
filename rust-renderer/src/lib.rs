@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader, WebGlUniformLocation, console};
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader, console};
 use std::mem;
 use cgmath::{perspective, Deg, InnerSpace, Matrix4, Point3, SquareMatrix, Vector3};
 use rand::Rng;
@@ -60,7 +60,7 @@ pub fn matrix4_to_array(matrix: &Matrix4<f32>) -> [f32; 16] {
 
 #[wasm_bindgen]
 pub fn handle_mouse_click(x: f64, y: f64) {
-    web_sys::console::log_1(&format!("INFO: mouse click at: {}, {}", x, y).into());
+    console::log_1(&format!("INFO: mouse click at: {}, {}", x, y).into());
 }
 
 #[wasm_bindgen]
@@ -74,11 +74,19 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.clear_color(0.0, 0.0, 0.0, 1.0);
 
     // Triangle vertex data
-    let vertices: [f32; 18] = [
+    let _vertices: [f32; 18] = [
         // positions         // normals
         -0.5, -0.5, 0.0,     0.0, 0.0, 1.0,
          0.5, -0.5, 0.0,     0.0, 0.0, 1.0,
          0.0,  0.5, 0.0,     0.0, 0.0, 1.0,
+    ];
+
+    let axes_scale = 0.5;
+    let coordinate_axes: [f32; 18] = [
+        // start point          // end point
+        0.0, 0.0, 0.0,          axes_scale, 0.0, 0.0,
+        0.0, 0.0, 0.0,          0.0, axes_scale, 0.0,
+        0.0, 0.0, 0.0,          0.0, 0.0, axes_scale,
     ];
 
     // Create VAO
@@ -89,10 +97,10 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let vbo = gl.create_buffer().ok_or("Could not create VBO")?;
     gl.bind_buffer(GL::ARRAY_BUFFER, Some(&vbo));
 
-    // Transfer vertex data
+    // Transfer coordinate axes data
     unsafe {
-        let vert_array = js_sys::Float32Array::view(&vertices);
-        gl.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &vert_array, GL::STATIC_DRAW);
+        let coord_array = js_sys::Float32Array::view(&coordinate_axes);
+        gl.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &coord_array, GL::STATIC_DRAW);
     }
 
     // Shaders
@@ -148,6 +156,18 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 
             vec3 result = (ambient + diffuse + specular) * objectColor;
             FragColor = vec4(result, 1.0);
+            FragColor = vec4(1.0, 1.0, 0.0, 1.0); // yellow
+        }"#,
+    )?;
+
+    let frag2_shader = compile_shader(
+        &gl,
+        GL::FRAGMENT_SHADER,
+        r#"#version 300 es
+        precision mediump float;
+        out vec4 FragColor;
+        void main() {
+            FragColor = vec4(1.0, 1.0, 0.0, 1.0); // yellow
         }"#,
     )?;
 
@@ -155,12 +175,12 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.use_program(Some(&program));
 
     // Attribute location 0: position
-    gl.vertex_attrib_pointer_with_i32(0, 3, GL::FLOAT, false, 6 * mem::size_of::<f32>() as i32, 0);
+    gl.vertex_attrib_pointer_with_i32(0, 3, GL::FLOAT, false, 3 * mem::size_of::<f32>() as i32, 0);
     gl.enable_vertex_attrib_array(0);
 
     // Attribute location 1: normals
-    gl.vertex_attrib_pointer_with_i32(1, 3, GL::FLOAT, false, 6 * mem::size_of::<f32>() as i32, (3 * mem::size_of::<f32>()) as i32);
-    gl.enable_vertex_attrib_array(1);
+    //gl.vertex_attrib_pointer_with_i32(1, 3, GL::FLOAT, false, 6 * mem::size_of::<f32>() as i32, (3 * mem::size_of::<f32>()) as i32);
+    //gl.enable_vertex_attrib_array(1);
 
     // View matrix
     let view = Matrix4::look_at_rh(
@@ -204,29 +224,32 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.bind_vertex_array(Some(&vao));
 
     // Animate the rotation
-    animate(0.0, gl, model_loc, rotation_axis);
+    animate(0.0, gl, program, rotation_axis);
 
     Ok(())
 }
 
-fn animate(start_time: f64, gl: GL, model_loc: WebGlUniformLocation, rotation_axis: Vector3<f32>) {
+fn animate(start_time: f64, gl: GL, program: WebGlProgram, rotation_axis: Vector3<f32>) {
     let f: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
     let g = f.clone();
 
     let closure = Closure::wrap(Box::new(move |time: f64| {
 
+        // Clear the screen
         gl.clear_color(0.0, 0.0, 0.0, 1.0);
-
         gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
 
+        // Update model matrix based on rotation around an axis
         let angle = Deg(((time - start_time) / 1000.0) as f32 * 45.0); // 45 degrees per second
         let model = Matrix4::from_axis_angle(rotation_axis, angle);
+
+        // Update the shader program with the model
+        gl.use_program(Some(&program));
+        let model_loc = gl.get_uniform_location(&program, "model").ok_or("Could not get model uniform location").unwrap();
         gl.uniform_matrix4fv_with_f32_array(Some(&model_loc), false, &matrix4_to_array(&model));
 
-        // Clear and draw
-        gl.clear_color(0.0, 0.0, 0.0, 1.0);
-        gl.clear(GL::COLOR_BUFFER_BIT);
-        gl.draw_arrays(GL::TRIANGLES, 0, 3);
+        // Draw
+        gl.draw_arrays(GL::LINES, 0, 6);
 
         // Schedule next frame
         web_sys::window()
@@ -236,6 +259,7 @@ fn animate(start_time: f64, gl: GL, model_loc: WebGlUniformLocation, rotation_ax
     }) as Box<dyn FnMut(f64)>);
 
     *g.borrow_mut() = Some(closure);
+
     web_sys::window().unwrap()
         .request_animation_frame(g.borrow().as_ref().unwrap().as_ref().unchecked_ref())
         .unwrap();
