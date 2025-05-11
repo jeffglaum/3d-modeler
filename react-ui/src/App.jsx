@@ -5,51 +5,87 @@ import { AppBar, Toolbar, Button, Menu, MenuItem } from '@mui/material';
 
 function DropdownAppBar() {
 
-  const [anchorEl, setAnchorEl] = React.useState(null);
+  const fileInputRef = useRef(null);
+  const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState(null);
+  const [drawMenuAnchorEl, setDrawMenuAnchorEl] = React.useState(null);
 
-  const handleClick = (event) => {
-    setAnchorEl(event.currentTarget);
+  const handleFileMenuClick = (event) => {
+    setFileMenuAnchorEl(event.currentTarget);
   };
 
-  const handleClose = () => {
-    setAnchorEl(null);
+  const handleFileMenuClose = () => {
+    setFileMenuAnchorEl(null);
+  };
+
+  const handleDrawMenuClick = (event) => {
+    setDrawMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleDrawMenuClose = () => {
+    setDrawMenuAnchorEl(null);
+  };
+
+  const handleFileOpen = () => {
+    fileInputRef.current.click();
+    handleFileMenuClose();
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      console.log("Selected file:", file.name);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        console.log("File content:", e.target.result);
+      };
+      reader.readAsText(file);
+    }
   };
 
   return (
+        <>
     <AppBar position="static">
       <Toolbar>
         <Button
           color="inherit"
-          onClick={handleClick}
+          onClick={handleFileMenuClick}
         >
           File
         </Button>
         <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleClose}
+          anchorEl={fileMenuAnchorEl}
+          open={Boolean(fileMenuAnchorEl)}
+          onClose={handleFileMenuClose}
         >
-          <MenuItem onClick={handleClose}>Option 1</MenuItem>
-          <MenuItem onClick={handleClose}>Option 2</MenuItem>
-          <MenuItem onClick={handleClose}>Option 3</MenuItem>
+          <MenuItem onClick={handleFileOpen}>Open</MenuItem>
+          <MenuItem onClick={handleFileMenuClose}>Option 2</MenuItem>
+          <MenuItem onClick={handleFileMenuClose}>Option 3</MenuItem>
         </Menu>
         <Button
           color="inherit"
-          onClick={handleClick}
+          onClick={handleDrawMenuClick}
         >
           Draw
         </Button>
         <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleClose}
+          anchorEl={drawMenuAnchorEl}
+          open={Boolean(drawMenuAnchorEl)}
+          onClose={handleDrawMenuClose}
         >
-          <MenuItem onClick={handleClose}>Option 1</MenuItem>
-          <MenuItem onClick={handleClose}>Option 2</MenuItem>
-          <MenuItem onClick={handleClose}>Option 3</MenuItem>
+          <MenuItem onClick={handleDrawMenuClose}>Option 1</MenuItem>
+          <MenuItem onClick={handleDrawMenuClose}>Option 2</MenuItem>
         </Menu>
       </Toolbar>
     </AppBar>
+
+    {/* Hidden file input */}
+    <input
+      type="file"
+      ref={fileInputRef}
+      style={{ display: 'none' }}
+      onChange={handleFileChange}
+    />
+    </>
   );
 }
 
