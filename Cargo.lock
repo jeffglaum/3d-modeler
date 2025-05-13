@@ -167,6 +167,7 @@ dependencies = [
  "js-sys",
  "rand",
  "wasm-bindgen",
+ "wavefront_rs",
  "web-sys",
 ]
 
@@ -259,6 +260,11 @@ checksum = "1a05d73b933a847d6cccdda8f838a22ff101ad9bf93e33684f39c1f5f0eece3d"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "wavefront_rs"
+version = "0.0.0"
+source = "git+https://github.com/replicadse/wavefront_rs.git#44692787f127fbb5289cdd3045f6f4cf5e7db233"
 
 [[package]]
 name = "web-sys"

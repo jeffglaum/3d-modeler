@@ -33,12 +33,20 @@ function DropdownAppBar() {
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (file) {
-      console.log("Selected file:", file.name);
+      //console.log("Selected file:", file.name);
       const reader = new FileReader();
       reader.onload = (e) => {
-        console.log("File content:", e.target.result);
+        const fileContent = e.target.result; // File content as a string
+        //console.log("File content:", fileContent);
+
+        // Call the Rust WebAssembly function
+        if (window.wasm && window.wasm.process_file_content) {
+          window.wasm.process_file_content(fileContent);
+        } else {
+          console.error("Rust WebAssembly function not found!");
+        }
       };
-      reader.readAsText(file);
+      reader.readAsText(file); // Read the file as text
     }
   };
 
@@ -99,9 +107,9 @@ function App() {
 
       window.wasm = wasm;
 
-      if (canvas) {
-        wasm.start_rendering(canvas);
-      }
+      //if (canvas) {
+        //wasm.start_rendering(canvas);
+      //}
     };
     run();
   }, []);
@@ -110,6 +118,11 @@ function App() {
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      wasm.start_rendering(canvas);
+    }
 
     if (window.wasm && window.wasm.handle_mouse_click) {
       window.wasm.handle_mouse_click(x, y);

@@ -1,18 +1,59 @@
-use wasm_bindgen::prelude::*;
-use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader, console};
-use std::mem;
+mod vao;
+mod vbo;
+
+use crate::vao::VertexArray;
+use crate::vbo::Buffer;
+
 use cgmath::{perspective, Deg, InnerSpace, Matrix4, Point3, SquareMatrix, Vector3};
 use rand::Rng;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::io::BufReader;
 use std::rc::Rc;
+use std::sync::RwLock;
+use wasm_bindgen::prelude::*;
+use wavefront_rs::obj::{entity::*, parser::*};
+use web_sys::{
+    console, HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, WebGlShader,
+};
 
+// vertex data type
+type Pos = [f32; 3];
+type Norm = [f32; 3];
 
-fn compile_shader(
-    gl: &GL,
-    shader_type: u32,
-    source: &str,
-) -> Result<WebGlShader, String> {
-    let shader = gl.create_shader(shader_type).ok_or("Unable to create shader")?;
+#[repr(C, packed)]
+#[derive(Debug, Clone)]
+struct Vertex(Pos, Norm);
+
+// Global storage for vertices and indices
+thread_local! {
+    static VERTICES: RwLock<Vec<Vertex>> = RwLock::new(Vec::new());
+    static INDICES: RwLock<Vec<u32>> = RwLock::new(Vec::new());
+}
+
+#[macro_export]
+macro_rules! set_attribute {
+    ($vbo:ident, $gl:ident, $pos:tt, $t:ident :: $field:tt) => {{
+        let dummy = core::mem::MaybeUninit::<$t>::uninit();
+        let dummy_ptr = dummy.as_ptr();
+        let member_ptr = core::ptr::addr_of!((*dummy_ptr).$field);
+        const fn size_of_raw<T>(_: *const T) -> usize {
+            core::mem::size_of::<T>()
+        }
+        let member_offset = member_ptr as i32 - dummy_ptr as i32;
+        $vbo.set_attribute::<$t>(
+            &$gl,
+            $pos,
+            (size_of_raw(member_ptr) / core::mem::size_of::<f32>()) as i32,
+            member_offset,
+        )
+    }};
+}
+
+fn compile_shader(gl: &GL, shader_type: u32, source: &str) -> Result<WebGlShader, String> {
+    let shader = gl
+        .create_shader(shader_type)
+        .ok_or("Unable to create shader")?;
     gl.shader_source(&shader, source);
     gl.compile_shader(&shader);
 
@@ -51,10 +92,9 @@ fn link_program(
 /// Converts a cgmath::Matrix4<f32> into a column-major [f32; 16] array for OpenGL.
 pub fn matrix4_to_array(matrix: &Matrix4<f32>) -> [f32; 16] {
     [
-        matrix.x.x, matrix.x.y, matrix.x.z, matrix.x.w,
-        matrix.y.x, matrix.y.y, matrix.y.z, matrix.y.w,
-        matrix.z.x, matrix.z.y, matrix.z.z, matrix.z.w,
-        matrix.w.x, matrix.w.y, matrix.w.z, matrix.w.w,
+        matrix.x.x, matrix.x.y, matrix.x.z, matrix.x.w, matrix.y.x, matrix.y.y, matrix.y.z,
+        matrix.y.w, matrix.z.x, matrix.z.y, matrix.z.z, matrix.z.w, matrix.w.x, matrix.w.y,
+        matrix.w.z, matrix.w.w,
     ]
 }
 
@@ -64,44 +104,69 @@ pub fn handle_mouse_click(x: f64, y: f64) {
 }
 
 #[wasm_bindgen]
+pub fn process_file_content(content: &str) {
+    // Log the file content to the browser console (for debugging)
+    //web_sys::console::log_1(&format!("Received file content: {}", content).into());
+
+    // Prepare to parse the OBJ content
+    let mut positions: HashMap<usize, Pos> = HashMap::new();
+    let mut normals: HashMap<usize, Norm> = HashMap::new();
+    let mut vertices: Vec<Vertex> = vec![];
+    let mut indices: Vec<u32> = vec![];
+
+    // Parse the OBJ content from the provided string
+    Parser::read_to_end(&mut BufReader::new(content.as_bytes()), |x| match x {
+        Entity::Vertex { x, y, z, w: _ } => {
+            let index = positions.len() + 1; // OBJ indices are 1-based
+            positions.insert(index, [x as f32, y as f32, z as f32]);
+            //web_sys::console::log_1(&format!("Vertex: {},{},{}", x, y, z).into());
+        }
+        Entity::VertexNormal { x, y, z } => {
+            let index = normals.len() + 1; // OBJ indices are 1-based
+            normals.insert(index, [x as f32, y as f32, z as f32]);
+            //web_sys::console::log_1(&format!("Vertex Normal: {},{},{}", x, y, z).into());
+        }
+        Entity::Face {
+            vertices: face_vertices,
+        } => {
+            for v in face_vertices {
+                let pos_index = v.vertex as usize;
+                let norm_index = v.normal.unwrap_or(0) as usize;
+
+                // Retrieve position and normal
+                if let Some(pos) = positions.get(&pos_index) {
+                    let norm = normals.get(&norm_index).unwrap_or(&[0.0, 0.0, 0.0]);
+                    vertices.push(Vertex(*pos, *norm));
+                }
+
+                // Push the index (subtract 1 because OBJ indices are 1-based)
+                indices.push((v.vertex - 1) as u32);
+            }
+        }
+        _ => {}
+    })
+    .unwrap();
+
+    // Store the vertices and indices in the global storage
+    VERTICES.with(|v| {
+        let mut global_vertices = v.write().unwrap();
+        *global_vertices = vertices;
+    });
+
+    INDICES.with(|i| {
+        let mut global_indices = i.write().unwrap();
+        *global_indices = indices;
+    });
+
+    // Log the number of indices for debugging
+    //let indices_length = INDICES.with(|i| i.read().unwrap().len());
+    //web_sys::console::log_1(&format!("Number of indices: {}", indices_length).into());
+}
+
+#[wasm_bindgen]
 pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
-    let gl: GL = canvas
-        .get_context("webgl2")?
-        .unwrap()
-        .dyn_into::<GL>()?;
-
-    gl.clear_color(0.0, 0.0, 0.0, 1.0);
-
-    // Triangle vertex data
-    let _vertices: [f32; 18] = [
-        // positions         // normals
-        -0.5, -0.5, 0.0,     0.0, 0.0, 1.0,
-         0.5, -0.5, 0.0,     0.0, 0.0, 1.0,
-         0.0,  0.5, 0.0,     0.0, 0.0, 1.0,
-    ];
-
-    let axes_scale = 0.5;
-    let coordinate_axes: [f32; 18] = [
-        // start point          // end point
-        0.0, 0.0, 0.0,          axes_scale, 0.0, 0.0,
-        0.0, 0.0, 0.0,          0.0, axes_scale, 0.0,
-        0.0, 0.0, 0.0,          0.0, 0.0, axes_scale,
-    ];
-
-    // Create VAO
-    let vao = gl.create_vertex_array().ok_or("Could not create VAO")?;
-    gl.bind_vertex_array(Some(&vao));
-
-    // Create VBO
-    let vbo = gl.create_buffer().ok_or("Could not create VBO")?;
-    gl.bind_buffer(GL::ARRAY_BUFFER, Some(&vbo));
-
-    // Transfer coordinate axes data
-    unsafe {
-        let coord_array = js_sys::Float32Array::view(&coordinate_axes);
-        gl.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &coord_array, GL::STATIC_DRAW);
-    }
+    let gl: GL = canvas.get_context("webgl2")?.unwrap().dyn_into::<GL>()?;
 
     // Shaders
     let vert_shader = compile_shader(
@@ -123,7 +188,8 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
             Normal = mat3(transpose(inverse(model))) * aNormal;
             gl_Position = projection * view * vec4(FragPos, 1.0);
         }"#,
-    )?;
+    )
+    .unwrap();
 
     let frag_shader = compile_shader(
         &gl,
@@ -132,6 +198,7 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         precision mediump float;
         in vec3 FragPos;
         in vec3 Normal;
+
         out vec4 FragColor;
 
         uniform vec3 lightPos;
@@ -156,31 +223,39 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 
             vec3 result = (ambient + diffuse + specular) * objectColor;
             FragColor = vec4(result, 1.0);
-            FragColor = vec4(1.0, 1.0, 0.0, 1.0); // yellow
         }"#,
-    )?;
+    )
+    .unwrap();
 
-    let frag2_shader = compile_shader(
-        &gl,
-        GL::FRAGMENT_SHADER,
-        r#"#version 300 es
-        precision mediump float;
-        out vec4 FragColor;
-        void main() {
-            FragColor = vec4(1.0, 1.0, 0.0, 1.0); // yellow
-        }"#,
-    )?;
-
-    let program = link_program(&gl, &vert_shader, &frag_shader)?;
+    let program = link_program(&gl, &vert_shader, &frag_shader).unwrap();
     gl.use_program(Some(&program));
 
-    // Attribute location 0: position
-    gl.vertex_attrib_pointer_with_i32(0, 3, GL::FLOAT, false, 3 * mem::size_of::<f32>() as i32, 0);
-    gl.enable_vertex_attrib_array(0);
+    gl.clear_color(0.0, 0.0, 0.0, 1.0);
 
-    // Attribute location 1: normals
-    //gl.vertex_attrib_pointer_with_i32(1, 3, GL::FLOAT, false, 6 * mem::size_of::<f32>() as i32, (3 * mem::size_of::<f32>()) as i32);
-    //gl.enable_vertex_attrib_array(1);
+    // Retrieve the vertices and indices from the global storage
+    let vertices = VERTICES.with(|v| v.read().unwrap().clone());
+    let indices = INDICES.with(|i| i.read().unwrap().clone());
+    let indices_length = indices.len() as i32;
+
+    // Log the number of vertices and indices for debugging
+    //web_sys::console::log_1(&format!("Rendering with {} vertices", vertices.len()).into());
+    //web_sys::console::log_1(&format!("Rendering with {} indices", indices.len()).into());
+
+    // Create VBO
+    let vbo = unsafe { Buffer::new(&gl, GL::ARRAY_BUFFER) };
+    unsafe { vbo.set_data(&gl, vertices, GL::STATIC_DRAW) };
+
+    // Create VAO
+    let vao = unsafe { VertexArray::new(&gl) };
+    unsafe { set_attribute!(vao, gl, 0, Vertex::0) };
+    unsafe { set_attribute!(vao, gl, 1, Vertex::1) };
+
+    // Create index (element) buffer
+    let index_buffer = unsafe { Buffer::new(&gl, GL::ELEMENT_ARRAY_BUFFER) };
+    unsafe { index_buffer.set_data(&gl, indices, GL::STATIC_DRAW) };
+
+    // Bind the VBO to the VAO
+    unsafe { vao.bind(&gl) };
 
     // View matrix
     let view = Matrix4::look_at_rh(
@@ -198,18 +273,40 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         rng.random_range(-1.0..1.0),
         rng.random_range(-1.0..1.0),
         rng.random_range(-1.0..1.0),
-    ).normalize();
+    )
+    .normalize();
 
     // Adjust the model matrix by rotating it around the randomly-chosen vector
     let model = Matrix4::identity();
 
-    let model_loc = gl.get_uniform_location(&program, "model").ok_or("Could not get model uniform location")?;
-    let view_loc = gl.get_uniform_location(&program, "view").ok_or("Could not get view uniform location")?;
-    let proj_loc = gl.get_uniform_location(&program, "projection").ok_or("Could not get projection uniform location")?;
-    let light_pos_loc = gl.get_uniform_location(&program, "lightPos").ok_or("Could not get lightPos uniform location")?;
-    let view_pos_loc = gl.get_uniform_location(&program, "viewPos").ok_or("Could not get viewPos uniform location")?;
-    let light_color_loc = gl.get_uniform_location(&program, "lightColor").ok_or("Could not get lightColor uniform location")?;
-    let object_color_loc = gl.get_uniform_location(&program, "objectColor").ok_or("Could not get objectColor uniform location")?;
+    let model_loc = gl
+        .get_uniform_location(&program, "model")
+        .ok_or("Could not get model uniform location")
+        .unwrap();
+    let view_loc = gl
+        .get_uniform_location(&program, "view")
+        .ok_or("Could not get view uniform location")
+        .unwrap();
+    let proj_loc = gl
+        .get_uniform_location(&program, "projection")
+        .ok_or("Could not get projection uniform location")
+        .unwrap();
+    let light_pos_loc = gl
+        .get_uniform_location(&program, "lightPos")
+        .ok_or("Could not get lightPos uniform location")
+        .unwrap();
+    let view_pos_loc = gl
+        .get_uniform_location(&program, "viewPos")
+        .ok_or("Could not get viewPos uniform location")
+        .unwrap();
+    let light_color_loc = gl
+        .get_uniform_location(&program, "lightColor")
+        .ok_or("Could not get lightColor uniform location")
+        .unwrap();
+    let object_color_loc = gl
+        .get_uniform_location(&program, "objectColor")
+        .ok_or("Could not get objectColor uniform location")
+        .unwrap();
 
     // Assign shader variable data
     gl.uniform_matrix4fv_with_f32_array(Some(&model_loc), false, &matrix4_to_array(&model));
@@ -220,21 +317,25 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.uniform3f(Some(&light_color_loc), 1.0, 1.0, 1.0);
     gl.uniform3f(Some(&object_color_loc), 0.3, 0.5, 1.0);
 
-    // Select the triangle vao into context
-    gl.bind_vertex_array(Some(&vao));
+    gl.enable(GL::DEPTH_TEST);
+    gl.depth_func(GL::LESS);
 
     // Animate the rotation
-    animate(0.0, gl, program, rotation_axis);
-
+    animate(0.0, gl, program, indices_length, rotation_axis);
     Ok(())
 }
 
-fn animate(start_time: f64, gl: GL, program: WebGlProgram, rotation_axis: Vector3<f32>) {
+fn animate(
+    start_time: f64,
+    gl: GL,
+    program: WebGlProgram,
+    indices_length: i32,
+    rotation_axis: Vector3<f32>,
+) {
     let f: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
     let g = f.clone();
 
     let closure = Closure::wrap(Box::new(move |time: f64| {
-
         // Clear the screen
         gl.clear_color(0.0, 0.0, 0.0, 1.0);
         gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
@@ -245,11 +346,14 @@ fn animate(start_time: f64, gl: GL, program: WebGlProgram, rotation_axis: Vector
 
         // Update the shader program with the model
         gl.use_program(Some(&program));
-        let model_loc = gl.get_uniform_location(&program, "model").ok_or("Could not get model uniform location").unwrap();
+        let model_loc = gl
+            .get_uniform_location(&program, "model")
+            .ok_or("Could not get model uniform location")
+            .unwrap();
         gl.uniform_matrix4fv_with_f32_array(Some(&model_loc), false, &matrix4_to_array(&model));
 
         // Draw
-        gl.draw_arrays(GL::LINES, 0, 6);
+        gl.draw_arrays(GL::TRIANGLES, 0, indices_length);
 
         // Schedule next frame
         web_sys::window()
@@ -260,7 +364,8 @@ fn animate(start_time: f64, gl: GL, program: WebGlProgram, rotation_axis: Vector
 
     *g.borrow_mut() = Some(closure);
 
-    web_sys::window().unwrap()
+    web_sys::window()
+        .unwrap()
         .request_animation_frame(g.borrow().as_ref().unwrap().as_ref().unchecked_ref())
         .unwrap();
 }

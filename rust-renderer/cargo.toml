@@ -24,3 +24,4 @@ js-sys = "0.3"
 cgmath = "0.18.0"
 getrandom = { version = "0.3.2", features = ["wasm_js"] }
 rand = "0.9.1"
+wavefront_rs = { git = "https://github.com/replicadse/wavefront_rs.git" }
