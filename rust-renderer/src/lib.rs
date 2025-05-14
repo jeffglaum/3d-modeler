@@ -218,7 +218,7 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         uniform vec3 objectColor;
 
         void main() {
-            float ambientStrength = 0.1;
+            float ambientStrength = 0.4;
             vec3 ambient = ambientStrength * lightColor;
 
             vec3 norm = normalize(Normal);
