@@ -129,20 +129,31 @@ pub fn process_file_content(content: &str) {
         Entity::Face {
             vertices: face_vertices,
         } => {
-            for v in face_vertices {
-                let pos_index = v.vertex as usize;
-                let norm_index = v.normal.unwrap_or(0) as usize;
+            // Fan triangulation: create triangles from v0, vi, vi+1
+            if face_vertices.len() >= 3 {
+                let v0 = &face_vertices[0];
+                for i in 1..face_vertices.len() - 1 {
+                    let v1 = &face_vertices[i];
+                    let v2 = &face_vertices[i + 1];
 
-                // Retrieve position and normal
-                if let Some(pos) = positions.get(&pos_index) {
-                    let norm = normals.get(&norm_index).unwrap_or(&[0.0, 0.0, 0.0]);
-                    vertices.push(Vertex(*pos, *norm));
+                    let indices_set = [v0, v1, v2];
+
+                    for v in &indices_set {
+                        let pos_index = v.vertex as usize;
+                        let norm_index = v.normal.unwrap_or(0) as usize;
+
+                        if let Some(pos) = positions.get(&pos_index) {
+                            let norm = normals.get(&norm_index).unwrap_or(&[0.0, 0.0, 0.0]);
+                            vertices.push(Vertex(*pos, *norm));
+                        }
+
+                        // OBJ indices are 1-based, subtract 1
+                        indices.push((v.vertex - 1) as u32);
+                    }
                 }
-
-                // Push the index (subtract 1 because OBJ indices are 1-based)
-                indices.push((v.vertex - 1) as u32);
             }
         }
+
         _ => {}
     })
     .unwrap();
@@ -159,8 +170,8 @@ pub fn process_file_content(content: &str) {
     });
 
     // Log the number of indices for debugging
-    //let indices_length = INDICES.with(|i| i.read().unwrap().len());
-    //web_sys::console::log_1(&format!("Number of indices: {}", indices_length).into());
+    let indices_length = INDICES.with(|i| i.read().unwrap().len());
+    web_sys::console::log_1(&format!("Number of indices: {}", indices_length).into());
 }
 
 #[wasm_bindgen]
@@ -259,7 +270,7 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 
     // View matrix
     let view = Matrix4::look_at_rh(
-        Point3::new(0.0, 0.0, 4.0),
+        Point3::new(0.0, 0.0, 15.0),
         Point3::new(0.0, 0.0, 0.0),
         Vector3::unit_y(),
     );
@@ -315,7 +326,7 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.uniform3f(Some(&light_pos_loc), 1.2, 1.0, 2.0);
     gl.uniform3f(Some(&view_pos_loc), 0.0, 0.0, 2.0);
     gl.uniform3f(Some(&light_color_loc), 1.0, 1.0, 1.0);
-    gl.uniform3f(Some(&object_color_loc), 0.3, 0.5, 1.0);
+    gl.uniform3f(Some(&object_color_loc), 1.0, 0.0, 0.5);
 
     gl.enable(GL::DEPTH_TEST);
     gl.depth_func(GL::LESS);
