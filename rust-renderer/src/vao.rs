@@ -13,7 +13,7 @@ impl VertexArray {
     pub unsafe fn new(gl: &GL) -> Self {
         let vao = gl
             .create_vertex_array()
-            .ok_or("Could not create VAO")
+            .ok_or("ERROR: could not create VAO")
             .unwrap();
         Self { obj: Some(vao) }
     }
