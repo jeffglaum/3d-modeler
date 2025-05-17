@@ -103,13 +103,13 @@ function App() {
   useEffect(() => {
     const run = async () => {
       const canvas = canvasRef.current;
-      const wasmModule = await init();
 
+      const wasmModule = await init();
       window.wasm = wasm;
 
-      //if (canvas) {
-        //wasm.start_rendering(canvas);
-      //}
+      if (canvas) {
+        wasm.start_rendering(canvas);
+      }
     };
     run();
   }, []);
@@ -132,10 +132,9 @@ function App() {
   return (
     <div className="w-full p-4 bg-gray-100 flex justify-start">
       <DropdownAppBar />
-      <canvas ref={canvasRef} width={1920} height={1080} onClick={handleClick}/>
+      <canvas ref={canvasRef} width={1920} height={1080}/>
     </div>
   );
 }
 
 export default App;
-

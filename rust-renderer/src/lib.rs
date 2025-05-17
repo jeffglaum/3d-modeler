@@ -4,8 +4,7 @@ mod vbo;
 use crate::vao::VertexArray;
 use crate::vbo::Buffer;
 
-use cgmath::{perspective, Deg, InnerSpace, Matrix4, Point3, SquareMatrix, Vector3};
-use rand::Rng;
+use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::BufReader;
@@ -27,6 +26,7 @@ struct Vertex(Pos, Norm);
 
 // Global storage for vertices and indices
 thread_local! {
+    static MODEL_LOADED: RwLock<bool> = RwLock::new(false);
     static VERTICES: RwLock<Vec<Vertex>> = RwLock::new(Vec::new());
     static INDICES: RwLock<Vec<u32>> = RwLock::new(Vec::new());
 }
@@ -169,15 +169,121 @@ pub fn process_file_content(content: &str) {
         *global_indices = indices;
     });
 
+    MODEL_LOADED.with(|i| {
+        let mut loaded = i.write().unwrap();
+        *loaded = false;
+    });
+
     // Log the number of indices for debugging
     let indices_length = INDICES.with(|i| i.read().unwrap().len());
     web_sys::console::log_1(&format!("Number of indices: {}", indices_length).into());
+}
+
+pub fn enable_mouse_controls(
+    canvas: HtmlCanvasElement,
+    rotation: Rc<RefCell<(f64, f64)>>,
+) -> Result<(), JsValue> {
+    let canvas = Rc::new(canvas);
+    let is_dragging = Rc::new(RefCell::new(false));
+    let last_mouse_pos = Rc::new(RefCell::new((0.0, 0.0)));
+
+    // Clone references for the `mousedown` event
+    let canvas_clone = canvas.clone();
+    let is_dragging_clone = is_dragging.clone();
+    let last_mouse_pos_clone = last_mouse_pos.clone();
+
+    // Mouse down event
+    let on_mouse_down = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+        *is_dragging_clone.borrow_mut() = true;
+        *last_mouse_pos_clone.borrow_mut() = (event.client_x() as f64, event.client_y() as f64);
+    }) as Box<dyn FnMut(_)>);
+    canvas_clone
+        .add_event_listener_with_callback("mousedown", on_mouse_down.as_ref().unchecked_ref())?;
+    on_mouse_down.forget();
+
+    // Clone references for the `mousemove` event
+    let canvas_clone = canvas.clone();
+    let is_dragging_clone = is_dragging.clone();
+    let last_mouse_pos_clone = last_mouse_pos.clone();
+    let rotation_clone = rotation.clone();
+
+    // Mouse move event
+    let on_mouse_move = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+        if *is_dragging_clone.borrow() {
+            let (last_x, last_y) = *last_mouse_pos_clone.borrow();
+            let (current_x, current_y) = (event.client_x() as f64, event.client_y() as f64);
+
+            // Calculate the change in mouse position
+            let delta_x = current_x - last_x;
+            let delta_y = current_y - last_y;
+
+            // Update rotation angles (scale the deltas for smoother rotation)
+            let mut rotation = rotation_clone.borrow_mut();
+            rotation.0 += delta_y * 0.05; // Rotate around X-axis
+            rotation.1 += delta_x * 0.05; // Rotate around Y-axis
+
+            // Update the last mouse position
+            *last_mouse_pos_clone.borrow_mut() = (current_x, current_y);
+
+            //web_sys::console::log_1(&format!("Rotation {},{}", rotation.0, rotation.1).into());
+        }
+    }) as Box<dyn FnMut(_)>);
+    canvas_clone
+        .add_event_listener_with_callback("mousemove", on_mouse_move.as_ref().unchecked_ref())?;
+    on_mouse_move.forget();
+
+    // Clone references for the `mouseup` event
+    let is_dragging_clone = is_dragging.clone();
+
+    // Mouse up event
+    let on_mouse_up = Closure::wrap(Box::new(move |_event: web_sys::MouseEvent| {
+        *is_dragging_clone.borrow_mut() = false;
+    }) as Box<dyn FnMut(_)>);
+    canvas.add_event_listener_with_callback("mouseup", on_mouse_up.as_ref().unchecked_ref())?;
+    on_mouse_up.forget();
+
+    Ok(())
+}
+
+fn update_model(gl: GL) {
+    // Retrieve the vertices and indices from the global storage
+    let vertices = VERTICES.with(|v| v.read().unwrap().clone());
+    let indices = INDICES.with(|i| i.read().unwrap().clone());
+    let indices_length = indices.len() as i32;
+
+    web_sys::console::log_1(
+        &format!(
+            "INFO: update_model called, indices_length={}",
+            indices_length
+        )
+        .into(),
+    );
+
+    // Create VBO
+    let vbo = unsafe { Buffer::new(&gl, GL::ARRAY_BUFFER) };
+    unsafe { vbo.set_data(&gl, vertices, GL::STATIC_DRAW) };
+
+    // Create VAO
+    let vao = unsafe { VertexArray::new(&gl) };
+    unsafe { set_attribute!(vao, gl, 0, Vertex::0) };
+    unsafe { set_attribute!(vao, gl, 1, Vertex::1) };
+
+    // Create index (element) buffer
+    let index_buffer = unsafe { Buffer::new(&gl, GL::ELEMENT_ARRAY_BUFFER) };
+    unsafe { index_buffer.set_data(&gl, indices, GL::STATIC_DRAW) };
+
+    // Bind the VBO to the VAO
+    unsafe { vao.bind(&gl) };
 }
 
 #[wasm_bindgen]
 pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
     let gl: GL = canvas.get_context("webgl2")?.unwrap().dyn_into::<GL>()?;
+
+    // Enable mouse controls
+    let rotation = Rc::new(RefCell::new((0.0, 0.0)));
+    enable_mouse_controls(canvas.clone(), rotation.clone())?;
 
     // Shaders
     let vert_shader = compile_shader(
@@ -241,62 +347,15 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let program = link_program(&gl, &vert_shader, &frag_shader).unwrap();
     gl.use_program(Some(&program));
 
-    gl.clear_color(0.0, 0.0, 0.0, 1.0);
-
-    // Retrieve the vertices and indices from the global storage
-    let vertices = VERTICES.with(|v| v.read().unwrap().clone());
-    let indices = INDICES.with(|i| i.read().unwrap().clone());
-    let indices_length = indices.len() as i32;
-
-    // Log the number of vertices and indices for debugging
-    //web_sys::console::log_1(&format!("Rendering with {} vertices", vertices.len()).into());
-    //web_sys::console::log_1(&format!("Rendering with {} indices", indices.len()).into());
-
-    // Create VBO
-    let vbo = unsafe { Buffer::new(&gl, GL::ARRAY_BUFFER) };
-    unsafe { vbo.set_data(&gl, vertices, GL::STATIC_DRAW) };
-
-    // Create VAO
-    let vao = unsafe { VertexArray::new(&gl) };
-    unsafe { set_attribute!(vao, gl, 0, Vertex::0) };
-    unsafe { set_attribute!(vao, gl, 1, Vertex::1) };
-
-    // Create index (element) buffer
-    let index_buffer = unsafe { Buffer::new(&gl, GL::ELEMENT_ARRAY_BUFFER) };
-    unsafe { index_buffer.set_data(&gl, indices, GL::STATIC_DRAW) };
-
-    // Bind the VBO to the VAO
-    unsafe { vao.bind(&gl) };
-
-    // View matrix
-    let view = Matrix4::look_at_rh(
-        Point3::new(0.0, 0.0, 15.0),
-        Point3::new(0.0, 0.0, 0.0),
-        Vector3::unit_y(),
-    );
+    // Model matrix
+    let model = Matrix4::identity();
 
     // Projection matrix
     let projection = perspective(Deg(45.0), 1920.0 / 1080.0, 0.1, 100.0);
 
-    // Choose a random axis of rotation
-    let mut rng = rand::rng();
-    let rotation_axis = Vector3::new(
-        rng.random_range(-1.0..1.0),
-        rng.random_range(-1.0..1.0),
-        rng.random_range(-1.0..1.0),
-    )
-    .normalize();
-
-    // Adjust the model matrix by rotating it around the randomly-chosen vector
-    let model = Matrix4::identity();
-
     let model_loc = gl
         .get_uniform_location(&program, "model")
         .ok_or("Could not get model uniform location")
-        .unwrap();
-    let view_loc = gl
-        .get_uniform_location(&program, "view")
-        .ok_or("Could not get view uniform location")
         .unwrap();
     let proj_loc = gl
         .get_uniform_location(&program, "projection")
@@ -321,7 +380,6 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 
     // Assign shader variable data
     gl.uniform_matrix4fv_with_f32_array(Some(&model_loc), false, &matrix4_to_array(&model));
-    gl.uniform_matrix4fv_with_f32_array(Some(&view_loc), false, &matrix4_to_array(&view));
     gl.uniform_matrix4fv_with_f32_array(Some(&proj_loc), false, &matrix4_to_array(&projection));
     gl.uniform3f(Some(&light_pos_loc), 1.2, 1.0, 2.0);
     gl.uniform3f(Some(&view_pos_loc), 0.0, 0.0, 2.0);
@@ -332,51 +390,74 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.depth_func(GL::LESS);
 
     // Animate the rotation
-    animate(0.0, gl, program, indices_length, rotation_axis);
+    animate_with_rotation(gl, program, rotation.clone());
+
     Ok(())
 }
 
-fn animate(
-    start_time: f64,
-    gl: GL,
-    program: WebGlProgram,
-    indices_length: i32,
-    rotation_axis: Vector3<f32>,
-) {
-    let f: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
+fn window() -> web_sys::Window {
+    web_sys::window().expect("ERROR: no global `window` exists")
+}
+
+fn request_animation_frame(f: &Closure<dyn FnMut()>) {
+    window()
+        .request_animation_frame(f.as_ref().unchecked_ref())
+        .expect("ERROR: should register `requestAnimationFrame` OK");
+}
+
+fn animate_with_rotation(gl: GL, program: WebGlProgram, rotation: Rc<RefCell<(f64, f64)>>) {
+    let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
-    let closure = Closure::wrap(Box::new(move |time: f64| {
+    *g.borrow_mut() = Some(Closure::new(move || {
         // Clear the screen
         gl.clear_color(0.0, 0.0, 0.0, 1.0);
         gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
 
-        // Update model matrix based on rotation around an axis
-        let angle = Deg(((time - start_time) / 1000.0) as f32 * 45.0); // 45 degrees per second
-        let model = Matrix4::from_axis_angle(rotation_axis, angle);
+        // Check if the model is loaded
+        let mut loaded = MODEL_LOADED.with(|i| i.read().unwrap().clone());
+        let indices = INDICES.with(|i| i.read().unwrap().clone());
+        let indices_length = indices.len() as i32;
 
-        // Update the shader program with the model
-        gl.use_program(Some(&program));
-        let model_loc = gl
-            .get_uniform_location(&program, "model")
-            .ok_or("Could not get model uniform location")
-            .unwrap();
-        gl.uniform_matrix4fv_with_f32_array(Some(&model_loc), false, &matrix4_to_array(&model));
+        // If the model is not loaded, load it
+        if !loaded {
+            if indices_length != 0 {
+                web_sys::console::log_1(&"INFO: Loading model...".into());
+                update_model(gl.clone());
+                MODEL_LOADED.with(|i| {
+                    let mut l = i.write().unwrap();
+                    *l = true;
+                });
+                loaded = true;
+            }
+        }
 
-        // Draw
-        gl.draw_arrays(GL::TRIANGLES, 0, indices_length);
+        if loaded {
+            // Retrieve the current rotation angles
+            let (x_rotation, y_rotation) = *rotation.borrow();
 
-        // Schedule next frame
-        web_sys::window()
-            .unwrap()
-            .request_animation_frame(f.borrow().as_ref().unwrap().as_ref().unchecked_ref())
-            .unwrap();
-    }) as Box<dyn FnMut(f64)>);
+            // Update the view matrix based on rotation
+            let view = Matrix4::look_at_rh(
+                Point3::new(0.0, 0.0, 15.0),
+                Point3::new(0.0, 0.0, 0.0),
+                Vector3::unit_y(),
+            ) * Matrix4::from_angle_x(Deg(x_rotation as f32))
+                * Matrix4::from_angle_y(Deg(y_rotation as f32));
 
-    *g.borrow_mut() = Some(closure);
+            // Update the shader program with the view matrix
+            gl.use_program(Some(&program));
+            let view_loc = gl
+                .get_uniform_location(&program, "view")
+                .ok_or("Could not get view uniform location")
+                .unwrap();
+            gl.uniform_matrix4fv_with_f32_array(Some(&view_loc), false, &matrix4_to_array(&view));
 
-    web_sys::window()
-        .unwrap()
-        .request_animation_frame(g.borrow().as_ref().unwrap().as_ref().unchecked_ref())
-        .unwrap();
+            // Draw
+            gl.draw_arrays(GL::TRIANGLES, 0, indices_length);
+        }
+        // Schedule ourself for another requestAnimationFrame callback.
+        request_animation_frame(f.borrow().as_ref().unwrap());
+    }));
+
+    request_animation_frame(g.borrow().as_ref().unwrap());
 }
