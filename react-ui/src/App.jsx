@@ -53,7 +53,7 @@ function DropdownAppBar({ canvasRef}) {
 
   return (
         <>
-    <AppBar position="static">
+    <AppBar position="fixed" style={{width: '100%'}}>
       <Toolbar>
         <Button
           color="inherit"
@@ -97,14 +97,30 @@ function DropdownAppBar({ canvasRef}) {
     </>
   );
 }
-
 function App() {
   const canvasRef = useRef(null);
 
   useEffect(() => {
-    const run = async () => {
-      const canvas = canvasRef.current;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    
+    const canvas = canvasRef.current;
 
+    const resizeCanvas = () => {
+      if (canvas) {
+        const windowBorder = 15;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - windowBorder;
+      }
+    };
+
+    // Set initial canvas size
+    resizeCanvas();
+
+    // Listen for window resize events
+    window.addEventListener('resize', resizeCanvas);
+
+    const run = async () => {
       const wasmModule = await init();
       window.wasm = wasm;
 
@@ -113,6 +129,13 @@ function App() {
       }
     };
     run();
+
+    // Cleanup event listener on unmount
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      window.removeEventListener('resize', resizeCanvas);
+    };
   }, []);
 
   const handleClick = (e) => {
@@ -131,9 +154,12 @@ function App() {
   };
 
   return (
-    <div className="w-full p-4 bg-gray-100 flex justify-start">
-      <DropdownAppBar canvasRef={canvasRef}/>
-      <canvas ref={canvasRef} width={1920} height={1080}/>
+    <div
+      className="w-full bg-gray-100 flex justify-start"
+      style={{ margin: 0, padding: 0, height: '100vh', width: '100vw' }}
+    >
+      <DropdownAppBar canvasRef={canvasRef} />
+      <canvas ref={canvasRef} />
     </div>
   );
 }

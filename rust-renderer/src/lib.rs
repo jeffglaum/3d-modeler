@@ -113,7 +113,7 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let model = Matrix4::identity();
 
     // Projection matrix
-    let projection = perspective(Deg(45.0), 1920.0 / 1080.0, 0.1, 100.0);
+    let projection = perspective(Deg(45.0), canvas.width() as f32 / canvas.height() as f32, 0.1, 100.0);
 
     let model_loc = gl
         .get_uniform_location(&program, "model")
