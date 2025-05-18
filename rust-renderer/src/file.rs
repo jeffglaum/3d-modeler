@@ -1,12 +1,10 @@
-
+use crate::global::{Norm, Pos, Vertex, INDICES, MODEL_LOADED, VERTICES};
+use crate::update_model;
 use std::collections::HashMap;
 use std::io::BufReader;
-use wavefront_rs::obj::{entity::*, parser::*};
 use wasm_bindgen::prelude::*;
-use crate::global::{VERTICES, INDICES, MODEL_LOADED, Vertex, Pos, Norm};
+use wavefront_rs::obj::{entity::*, parser::*};
 use web_sys::WebGl2RenderingContext as GL;
-use crate::update_model;
-
 
 #[wasm_bindgen]
 pub fn process_file_content(content: &str, gl: GL) {

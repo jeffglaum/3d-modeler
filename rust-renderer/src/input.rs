@@ -1,8 +1,7 @@
-use wasm_bindgen::prelude::*;
-use web_sys::{HtmlCanvasElement, console};
 use std::cell::RefCell;
 use std::rc::Rc;
-
+use wasm_bindgen::prelude::*;
+use web_sys::{console, HtmlCanvasElement};
 
 #[wasm_bindgen]
 pub fn handle_mouse_click(x: f64, y: f64) {

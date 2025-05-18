@@ -7,7 +7,10 @@ pub struct Buffer {
 
 impl Buffer {
     pub unsafe fn new(gl: &GL, target: u32) -> Self {
-        let vbo = gl.create_buffer().ok_or("ERROR: could not create VBO").unwrap();
+        let vbo = gl
+            .create_buffer()
+            .ok_or("ERROR: could not create VBO")
+            .unwrap();
         Self { obj: vbo, target }
     }
 

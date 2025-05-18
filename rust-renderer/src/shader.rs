@@ -1,4 +1,4 @@
-use web_sys::{WebGlProgram, WebGlShader, WebGl2RenderingContext as GL};
+use web_sys::{WebGl2RenderingContext as GL, WebGlProgram, WebGlShader};
 
 pub fn compile_shader(gl: &GL, shader_type: u32, source: &str) -> Result<WebGlShader, String> {
     let shader = gl
@@ -23,7 +23,9 @@ pub fn link_program(
     vert_shader: &WebGlShader,
     frag_shader: &WebGlShader,
 ) -> Result<WebGlProgram, String> {
-    let program = gl.create_program().ok_or("ERROR: unable to link shader program")?;
+    let program = gl
+        .create_program()
+        .ok_or("ERROR: unable to link shader program")?;
     gl.attach_shader(&program, vert_shader);
     gl.attach_shader(&program, frag_shader);
     gl.link_program(&program);

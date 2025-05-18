@@ -1,23 +1,23 @@
-mod vao;
-mod vbo;
 mod file;
 mod global;
-mod shader;
 mod input;
 mod matrix;
+mod shader;
+mod vao;
+mod vbo;
 
 use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
-use web_sys::{ HtmlCanvasElement, WebGl2RenderingContext as GL };
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL};
 
-use crate::vao::VertexArray;
-use crate::vbo::Buffer;
-use crate::global::{VERTICES, INDICES, Vertex};
-use crate::shader::{compile_shader, link_program};
+use crate::global::{Vertex, INDICES, VERTICES};
 use crate::input::enable_mouse_controls;
 use crate::matrix::matrix4_to_array;
+use crate::shader::{compile_shader, link_program};
+use crate::vao::VertexArray;
+use crate::vbo::Buffer;
 
 #[macro_export]
 macro_rules! set_attribute {
