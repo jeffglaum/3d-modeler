@@ -4,10 +4,12 @@ use std::io::BufReader;
 use wavefront_rs::obj::{entity::*, parser::*};
 use wasm_bindgen::prelude::*;
 use crate::global::{VERTICES, INDICES, MODEL_LOADED, Vertex, Pos, Norm};
+use web_sys::WebGl2RenderingContext as GL;
+use crate::update_model;
 
 
 #[wasm_bindgen]
-pub fn process_file_content(content: &str) {
+pub fn process_file_content(content: &str, gl: GL) {
     // Log the file content to the browser console (for debugging)
     //web_sys::console::log_1(&format!("Received file content: {}", content).into());
 
@@ -80,4 +82,7 @@ pub fn process_file_content(content: &str) {
     // Log the number of indices for debugging
     let indices_length = INDICES.with(|i| i.read().unwrap().len());
     web_sys::console::log_1(&format!("INFO: number of model indices: {}", indices_length).into());
+
+    // Trigger the update_model function
+    update_model(gl);
 }

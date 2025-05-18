@@ -3,7 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import init, * as wasm from 'rust-renderer';
 import { AppBar, Toolbar, Button, Menu, MenuItem } from '@mui/material';
 
-function DropdownAppBar() {
+function DropdownAppBar({ canvasRef}) {
 
   const fileInputRef = useRef(null);
   const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState(null);
@@ -41,7 +41,8 @@ function DropdownAppBar() {
 
         // Call the Rust WebAssembly function
         if (window.wasm && window.wasm.process_file_content) {
-          window.wasm.process_file_content(fileContent);
+          const gl = canvasRef.current.getContext('webgl2');
+          window.wasm.process_file_content(fileContent, gl);
         } else {
           console.error("Rust WebAssembly function not found!");
         }
@@ -131,7 +132,7 @@ function App() {
 
   return (
     <div className="w-full p-4 bg-gray-100 flex justify-start">
-      <DropdownAppBar />
+      <DropdownAppBar canvasRef={canvasRef}/>
       <canvas ref={canvasRef} width={1920} height={1080}/>
     </div>
   );

@@ -10,11 +10,11 @@ use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
-use web_sys::{ HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram};
+use web_sys::{ HtmlCanvasElement, WebGl2RenderingContext as GL };
 
 use crate::vao::VertexArray;
 use crate::vbo::Buffer;
-use crate::global::{VERTICES, INDICES, MODEL_LOADED, Vertex};
+use crate::global::{VERTICES, INDICES, Vertex};
 use crate::shader::{compile_shader, link_program};
 use crate::input::enable_mouse_controls;
 use crate::matrix::matrix4_to_array;
@@ -151,13 +151,52 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.enable(GL::DEPTH_TEST);
     gl.depth_func(GL::LESS);
 
-    // Animate the rotation
-    animate_with_rotation(gl, program, rotation.clone());
+    // Clear the screen
+    gl.clear_color(0.0, 0.0, 0.0, 1.0);
+    gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
+
+    // Add mouse swipe listener
+    let rotation_clone = rotation.clone();
+    let gl_clone = gl.clone();
+    let program_clone = program.clone();
+
+    let closure = Closure::wrap(Box::new(move || {
+        // Clear the screen
+        gl_clone.clear_color(0.0, 0.0, 0.0, 1.0);
+        gl_clone.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
+
+        // Retrieve the current rotation angles
+        let (x_rotation, y_rotation) = *rotation_clone.borrow();
+
+        // Update the view matrix based on rotation
+        let view = Matrix4::look_at_rh(
+            Point3::new(0.0, 0.0, 15.0),
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::unit_y(),
+        ) * Matrix4::from_angle_x(Deg(x_rotation as f32))
+            * Matrix4::from_angle_y(Deg(y_rotation as f32));
+
+        // Update the shader program with the view matrix
+        gl_clone.use_program(Some(&program_clone));
+        let view_loc = gl_clone
+            .get_uniform_location(&program_clone, "view")
+            .ok_or("ERROR: could not get view uniform location")
+            .unwrap();
+        gl_clone.uniform_matrix4fv_with_f32_array(Some(&view_loc), false, &matrix4_to_array(&view));
+
+        // Draw
+        let indices = INDICES.with(|i| i.read().unwrap().clone());
+        let indices_length = indices.len() as i32;
+        gl_clone.draw_arrays(GL::TRIANGLES, 0, indices_length);
+    }) as Box<dyn FnMut()>);
+
+    canvas.add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref())?;
+    closure.forget();
 
     Ok(())
 }
 
-fn update_model(gl: GL) {
+pub fn update_model(gl: GL) {
     // Retrieve the vertices and indices from the global storage
     let vertices = VERTICES.with(|v| v.read().unwrap().clone());
     let indices = INDICES.with(|i| i.read().unwrap().clone());
@@ -177,70 +216,4 @@ fn update_model(gl: GL) {
 
     // Bind the VBO to the VAO
     unsafe { vao.bind(&gl) };
-}
-
-fn window() -> web_sys::Window {
-    web_sys::window().expect("ERROR: no global window exists")
-}
-
-fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-    window()
-        .request_animation_frame(f.as_ref().unchecked_ref())
-        .expect("ERROR: failed to request animation frame");
-}
-
-fn animate_with_rotation(gl: GL, program: WebGlProgram, rotation: Rc<RefCell<(f64, f64)>>) {
-    let f = Rc::new(RefCell::new(None));
-    let g = f.clone();
-
-    *g.borrow_mut() = Some(Closure::new(move || {
-        // Clear the screen
-        gl.clear_color(0.0, 0.0, 0.0, 1.0);
-        gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
-
-        // Check if the model is loaded
-        let mut loaded = MODEL_LOADED.with(|i| i.read().unwrap().clone());
-        let indices = INDICES.with(|i| i.read().unwrap().clone());
-        let indices_length = indices.len() as i32;
-
-        // If the model is not loaded, load it
-        if !loaded {
-            if indices_length != 0 {
-                update_model(gl.clone());
-                MODEL_LOADED.with(|i| {
-                    let mut l = i.write().unwrap();
-                    *l = true;
-                });
-                loaded = true;
-            }
-        }
-
-        if loaded {
-            // Retrieve the current rotation angles
-            let (x_rotation, y_rotation) = *rotation.borrow();
-
-            // Update the view matrix based on rotation
-            let view = Matrix4::look_at_rh(
-                Point3::new(0.0, 0.0, 15.0),
-                Point3::new(0.0, 0.0, 0.0),
-                Vector3::unit_y(),
-            ) * Matrix4::from_angle_x(Deg(x_rotation as f32))
-                * Matrix4::from_angle_y(Deg(y_rotation as f32));
-
-            // Update the shader program with the view matrix
-            gl.use_program(Some(&program));
-            let view_loc = gl
-                .get_uniform_location(&program, "view")
-                .ok_or("ERROR: could not get view uniform location")
-                .unwrap();
-            gl.uniform_matrix4fv_with_f32_array(Some(&view_loc), false, &matrix4_to_array(&view));
-
-            // Draw
-            gl.draw_arrays(GL::TRIANGLES, 0, indices_length);
-        }
-        // Schedule ourself for another requestAnimationFrame callback.
-        request_animation_frame(f.borrow().as_ref().unwrap());
-    }));
-
-    request_animation_frame(g.borrow().as_ref().unwrap());
 }
