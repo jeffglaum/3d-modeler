@@ -7,10 +7,12 @@ mod vao;
 mod vbo;
 
 use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
+use global::DRAW_WIREFRAME;
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
-use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL};
+use web_sys::window;
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram};
 
 use crate::global::{Vertex, INDICES, VERTICES};
 use crate::input::enable_mouse_controls;
@@ -44,7 +46,9 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let gl: GL = canvas.get_context("webgl2")?.unwrap().dyn_into::<GL>()?;
 
     // Enable mouse controls
+    let zoom = Rc::new(RefCell::new(15.0));
     let rotation = Rc::new(RefCell::new((0.0, 0.0)));
+    let center_pos = Rc::new(RefCell::new((0.0, 0.0, 0.0)));
     enable_mouse_controls(canvas.clone(), rotation.clone())?;
 
     // Shaders
@@ -113,7 +117,12 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let model = Matrix4::identity();
 
     // Projection matrix
-    let projection = perspective(Deg(45.0), canvas.width() as f32 / canvas.height() as f32, 0.1, 100.0);
+    let projection = perspective(
+        Deg(45.0),
+        canvas.width() as f32 / canvas.height() as f32,
+        0.1,
+        100.0,
+    );
 
     let model_loc = gl
         .get_uniform_location(&program, "model")
@@ -156,44 +165,122 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
 
     // Add mouse swipe listener
-    let rotation_clone = rotation.clone();
     let gl_clone = gl.clone();
     let program_clone = program.clone();
+    let center_clone = center_pos.clone();
+    let rotation_clone = rotation.clone();
+    let zoom_clone = zoom.clone();
 
-    let closure = Closure::wrap(Box::new(move || {
-        // Clear the screen
-        gl_clone.clear_color(0.0, 0.0, 0.0, 1.0);
-        gl_clone.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
+    let key_handler = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+        if event.shift_key() && event.key() == "ArrowUp" {
+            // Handle Shift + ArrowUp
+            let mut zoom = zoom.borrow_mut();
+            *zoom -= 0.5;
+            *zoom = (*zoom as f32).max(1.0).min(50.0);
+        } else if event.shift_key() && event.key() == "ArrowDown" {
+            // Handle Shift + ArrowDown
+            let mut zoom = zoom.borrow_mut();
+            *zoom += 0.5;
+            *zoom = (*zoom as f32).max(1.0).min(50.0);
+        } else {
+            match event.key().as_str() {
+                "ArrowLeft" => {
+                    let mut center_pos = center_pos.borrow_mut();
+                    center_pos.0 -= 0.5;
+                }
+                "ArrowRight" => {
+                    let mut center_pos = center_pos.borrow_mut();
+                    center_pos.0 += 0.5;
+                }
+                "ArrowUp" => {
+                    let mut center_pos = center_pos.borrow_mut();
+                    center_pos.1 += 0.5;
+                }
+                "ArrowDown" => {
+                    let mut center_pos = center_pos.borrow_mut();
+                    center_pos.1 -= 0.5;
+                }
+                _ => {}
+            }
+        }
 
-        // Retrieve the current rotation angles
-        let (x_rotation, y_rotation) = *rotation_clone.borrow();
+        draw_model(
+            gl.clone(),
+            program.clone(),
+            center_pos.clone(),
+            rotation.clone(),
+            zoom.clone(),
+        );
+    }) as Box<dyn FnMut(_)>);
 
-        // Update the view matrix based on rotation
-        let view = Matrix4::look_at_rh(
-            Point3::new(0.0, 0.0, 15.0),
-            Point3::new(0.0, 0.0, 0.0),
-            Vector3::unit_y(),
-        ) * Matrix4::from_angle_x(Deg(x_rotation as f32))
-            * Matrix4::from_angle_y(Deg(y_rotation as f32));
-
-        // Update the shader program with the view matrix
-        gl_clone.use_program(Some(&program_clone));
-        let view_loc = gl_clone
-            .get_uniform_location(&program_clone, "view")
-            .ok_or("ERROR: could not get view uniform location")
-            .unwrap();
-        gl_clone.uniform_matrix4fv_with_f32_array(Some(&view_loc), false, &matrix4_to_array(&view));
-
-        // Draw
-        let indices = INDICES.with(|i| i.read().unwrap().clone());
-        let indices_length = indices.len() as i32;
-        gl_clone.draw_arrays(GL::TRIANGLES, 0, indices_length);
+    let mouse_handler = Closure::wrap(Box::new(move || {
+        draw_model(
+            gl_clone.clone(),
+            program_clone.clone(),
+            center_clone.clone(),
+            rotation_clone.clone(),
+            zoom_clone.clone(),
+        );
     }) as Box<dyn FnMut()>);
 
-    canvas.add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref())?;
-    closure.forget();
+    canvas.add_event_listener_with_callback("mousemove", mouse_handler.as_ref().unchecked_ref())?;
+    window()
+        .unwrap()
+        .add_event_listener_with_callback("keydown", key_handler.as_ref().unchecked_ref())?;
+    mouse_handler.forget();
+    key_handler.forget();
 
     Ok(())
+}
+
+#[wasm_bindgen]
+pub fn toggle_wireframe() {
+    DRAW_WIREFRAME.with(|v| {
+        let mut draw_wireframe = v.write().unwrap();
+        *draw_wireframe = !*draw_wireframe;
+        *draw_wireframe
+    });
+}
+
+fn draw_model(
+    gl: GL,
+    program: WebGlProgram,
+    center: Rc<RefCell<(f32, f32, f32)>>,
+    rotation: Rc<RefCell<(f64, f64)>>,
+    zoom: Rc<RefCell<f32>>,
+) {
+    // Clear the screen
+    gl.clear_color(0.0, 0.0, 0.0, 1.0);
+    gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
+
+    // Retrieve the current rotation angles
+    let (x_rotation, y_rotation) = *rotation.borrow();
+
+    // Update the view matrix based on rotation
+    let view = Matrix4::look_at_rh(
+        Point3::new(0.0, 0.0, *zoom.borrow()),
+        Point3::new(center.borrow().0, center.borrow().1, center.borrow().2),
+        Vector3::unit_y(),
+    ) * Matrix4::from_angle_x(Deg(x_rotation as f32))
+        * Matrix4::from_angle_y(Deg(y_rotation as f32));
+
+    // Update the shader program with the view matrix
+    gl.use_program(Some(&program));
+    let view_loc = gl
+        .get_uniform_location(&program, "view")
+        .ok_or("ERROR: could not get view uniform location")
+        .unwrap();
+    gl.uniform_matrix4fv_with_f32_array(Some(&view_loc), false, &matrix4_to_array(&view));
+
+    // Draw
+    let indices = INDICES.with(|i| i.read().unwrap().clone());
+    let indices_length = indices.len() as i32;
+    let draw_wireframe = DRAW_WIREFRAME.with(|v| v.read().unwrap().clone());
+    if draw_wireframe {
+        gl.draw_arrays(GL::LINES, 0, indices_length);
+    } else {
+        gl.draw_arrays(GL::TRIANGLES, 0, indices_length);
+    }
 }
 
 pub fn update_model(gl: GL) {

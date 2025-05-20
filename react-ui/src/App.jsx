@@ -51,6 +51,15 @@ function DropdownAppBar({ canvasRef}) {
     }
   };
 
+  const handleToggleWireframe = () => {
+    if (window.wasm && window.wasm.toggle_wireframe) {
+      window.wasm.toggle_wireframe(); // Call the Rust WASM function
+    } else {
+      console.error("Rust WebAssembly function 'toggle_wireframe' not found!");
+    }
+    handleFileMenuClose();
+  };
+
   return (
         <>
     <AppBar position="fixed" style={{width: '100%'}}>
@@ -67,7 +76,7 @@ function DropdownAppBar({ canvasRef}) {
           onClose={handleFileMenuClose}
         >
           <MenuItem onClick={handleFileOpen}>Open</MenuItem>
-          <MenuItem onClick={handleFileMenuClose}>Option 2</MenuItem>
+          <MenuItem onClick={handleToggleWireframe}>Toggle Wireframe</MenuItem>
           <MenuItem onClick={handleFileMenuClose}>Option 3</MenuItem>
         </Menu>
         <Button
