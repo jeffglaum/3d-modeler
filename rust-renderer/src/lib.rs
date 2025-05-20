@@ -6,7 +6,7 @@ mod shader;
 mod vao;
 mod vbo;
 
-use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Vector3};
+use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Transform, Vector3};
 use global::DRAW_WIREFRAME;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -90,7 +90,7 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         uniform vec3 objectColor;
 
         void main() {
-            float ambientStrength = 0.4;
+            float ambientStrength = 0.2;
             vec3 ambient = ambientStrength * lightColor;
 
             vec3 norm = normalize(Normal);
@@ -152,7 +152,7 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     // Assign shader variable data
     gl.uniform_matrix4fv_with_f32_array(Some(&model_loc), false, &matrix4_to_array(&model));
     gl.uniform_matrix4fv_with_f32_array(Some(&proj_loc), false, &matrix4_to_array(&projection));
-    gl.uniform3f(Some(&light_pos_loc), 1.2, 1.0, 2.0);
+    gl.uniform3f(Some(&light_pos_loc), 0.0, 5.0, 5.0);
     gl.uniform3f(Some(&view_pos_loc), 0.0, 0.0, 2.0);
     gl.uniform3f(Some(&light_color_loc), 1.0, 1.0, 1.0);
     gl.uniform3f(Some(&object_color_loc), 1.0, 0.0, 0.5);
@@ -271,6 +271,41 @@ fn draw_model(
         .ok_or("ERROR: could not get view uniform location")
         .unwrap();
     gl.uniform_matrix4fv_with_f32_array(Some(&view_loc), false, &matrix4_to_array(&view));
+
+    // Calculate rotated lightPos and viewPos
+    let light_pos = Vector3::new(0.0, 5.0, 5.0);
+    let view_pos = Vector3::new(0.0, 0.0, 2.0);
+
+    let rotation_matrix = Matrix4::from_angle_x(Deg(x_rotation as f32))
+        * Matrix4::from_angle_y(Deg(y_rotation as f32))
+            .invert()
+            .unwrap();
+
+    let rotated_light_pos = rotation_matrix.transform_vector(light_pos);
+    let rotated_view_pos = rotation_matrix.transform_vector(view_pos);
+
+    // Update lightPos and viewPos in the shader
+    let light_pos_loc = gl
+        .get_uniform_location(&program, "lightPos")
+        .ok_or("ERROR: could not get lightPos uniform location")
+        .unwrap();
+    let view_pos_loc = gl
+        .get_uniform_location(&program, "viewPos")
+        .ok_or("ERROR: could not get viewPos uniform location")
+        .unwrap();
+
+    gl.uniform3f(
+        Some(&light_pos_loc),
+        rotated_light_pos.x,
+        rotated_light_pos.y,
+        rotated_light_pos.z,
+    );
+    gl.uniform3f(
+        Some(&view_pos_loc),
+        rotated_view_pos.x,
+        rotated_view_pos.y,
+        rotated_view_pos.z,
+    );
 
     // Draw
     let indices = INDICES.with(|i| i.read().unwrap().clone());
