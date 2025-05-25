@@ -15,6 +15,7 @@ pub struct ModelObject {
     vertices: Option<RwLock<Vec<Vertex>>>,
     indices: Option<RwLock<Vec<u32>>>,
     draw_wireframe: bool,
+    color: [f32; 4], // RGBA color
 }
 
 impl ModelObject {
@@ -31,6 +32,7 @@ impl ModelObject {
             vertices: None,
             indices: None,
             draw_wireframe: true,
+            color: [1.0, 1.0, 1.0, 1.0],
         }
     }
 
@@ -69,6 +71,14 @@ impl ModelObject {
             //self.vao.bind(&gl)
         };
         self.loaded = true;
+    }
+
+    pub fn set_color(&mut self, color: [f32; 4]) {
+        self.color = color;
+    }
+
+    pub fn get_color(&self) -> [f32; 4] {
+        self.color
     }
 
     pub fn set_draw_wireframe(&mut self, draw_wireframe: bool) {

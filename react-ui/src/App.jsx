@@ -56,7 +56,7 @@ function DropdownAppBar() {
     } else {
       console.error("Rust WebAssembly function 'toggle_wireframe' not found!");
     }
-    handleFileMenuClose();
+    handleDrawMenuClose();
   };
 
   return (
@@ -75,8 +75,6 @@ function DropdownAppBar() {
           onClose={handleFileMenuClose}
         >
           <MenuItem onClick={handleFileOpen}>Open</MenuItem>
-          <MenuItem onClick={handleToggleWireframe}>Toggle Wireframe</MenuItem>
-          <MenuItem onClick={handleFileMenuClose}>Option 3</MenuItem>
         </Menu>
         <Button
           color="inherit"
@@ -89,8 +87,7 @@ function DropdownAppBar() {
           open={Boolean(drawMenuAnchorEl)}
           onClose={handleDrawMenuClose}
         >
-          <MenuItem onClick={handleDrawMenuClose}>Option 1</MenuItem>
-          <MenuItem onClick={handleDrawMenuClose}>Option 2</MenuItem>
+          <MenuItem onClick={handleToggleWireframe}>Toggle Wireframe</MenuItem>
         </Menu>
       </Toolbar>
     </AppBar>

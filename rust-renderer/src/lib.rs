@@ -62,7 +62,9 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     // Create model object
     MODEL.with(|v| {
         let mut model = v.write().unwrap();
-        *model = Some(ModelObject::new(gl.clone()));
+        let mut m = ModelObject::new(gl.clone());
+        m.set_color([1.0, 0.847, 0.0, 1.0]);
+        *model = Some(m);
     });
 
     // Shaders
@@ -393,11 +395,19 @@ fn draw_model(
         rotated_view_pos.z,
     );
 
+    let object_color_loc = gl
+    .get_uniform_location(&program, "objectColor")
+    .ok_or("ERROR: could not get objectColor uniform location")
+    .unwrap();
+
     // Draw
     GRID.with(|model| {
         let model = model.read().unwrap();
         if let Some(model) = model.as_ref() {
             model.bind();
+            let color = model.get_color();
+            gl.uniform3f(Some(&object_color_loc), color[0], color[1], color[2]);
+
             let indices_length = model.get_indices_count() as i32;
             if model.get_draw_wireframe() {
                 gl.draw_arrays(GL::LINES, 0, indices_length);
@@ -410,6 +420,9 @@ fn draw_model(
         let model = model.read().unwrap();
         if let Some(model) = model.as_ref() {
             model.bind();
+
+            let color = model.get_color();
+            gl.uniform3f(Some(&object_color_loc), color[0], color[1], color[2]);
             let indices_length = model.get_indices_count() as i32;
             if model.get_draw_wireframe() {
                 gl.draw_arrays(GL::LINES, 0, indices_length);
