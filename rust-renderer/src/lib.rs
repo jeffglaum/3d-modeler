@@ -2,24 +2,23 @@ mod file;
 mod global;
 mod input;
 mod matrix;
+mod model;
 mod shader;
 mod vao;
 mod vbo;
 
 use cgmath::{perspective, Deg, Matrix4, Point3, SquareMatrix, Transform, Vector3};
-use global::DRAW_WIREFRAME;
+use global::{Vertex, GRID, MODEL};
+use model::ModelObject;
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::window;
 use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram};
 
-use crate::global::{Vertex, INDICES, VERTICES};
 use crate::input::enable_mouse_controls;
 use crate::matrix::matrix4_to_array;
 use crate::shader::{compile_shader, link_program};
-use crate::vao::VertexArray;
-use crate::vbo::Buffer;
 
 #[macro_export]
 macro_rules! set_attribute {
@@ -50,6 +49,21 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let rotation = Rc::new(RefCell::new((0.0, 0.0)));
     let center_pos = Rc::new(RefCell::new((0.0, 0.0, 0.0)));
     enable_mouse_controls(canvas.clone(), rotation.clone())?;
+
+    // Create grid object
+    GRID.with(|v| {
+        let mut grid = v.write().unwrap();
+        let (vertices, indices) = generate_grid(100, 1.0);
+        let mut obj = ModelObject::new(gl.clone());
+        obj.update_model(vertices, indices);
+        *grid = Some(obj);
+    });
+
+    // Create model object
+    MODEL.with(|v| {
+        let mut model = v.write().unwrap();
+        *model = Some(ModelObject::new(gl.clone()));
+    });
 
     // Shaders
     let vert_shader = compile_shader(
@@ -204,23 +218,61 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
             }
         }
 
-        draw_model(
-            gl.clone(),
-            program.clone(),
-            center_pos.clone(),
-            rotation.clone(),
-            zoom.clone(),
-        );
+        GRID.with(|model| {
+            let model = model.read().unwrap();
+            if let Some(model) = model.as_ref() {
+                model.bind();
+                draw_model(
+                    gl.clone(),
+                    program.clone(),
+                    center_pos.clone(),
+                    rotation.clone(),
+                    zoom.clone(),
+                );
+            }
+        });
+        MODEL.with(|model| {
+            let model = model.read().unwrap();
+            if let Some(model) = model.as_ref() {
+                model.bind();
+                draw_model(
+                    gl.clone(),
+                    program.clone(),
+                    center_pos.clone(),
+                    rotation.clone(),
+                    zoom.clone(),
+                );
+            }
+        });
     }) as Box<dyn FnMut(_)>);
 
     let mouse_handler = Closure::wrap(Box::new(move || {
-        draw_model(
-            gl_clone.clone(),
-            program_clone.clone(),
-            center_clone.clone(),
-            rotation_clone.clone(),
-            zoom_clone.clone(),
-        );
+        GRID.with(|model| {
+            let model = model.read().unwrap();
+            if let Some(model) = model.as_ref() {
+                model.bind();
+                draw_model(
+                    gl_clone.clone(),
+                    program_clone.clone(),
+                    center_clone.clone(),
+                    rotation_clone.clone(),
+                    zoom_clone.clone(),
+                );
+            }
+        });
+        MODEL.with(|model| {
+            let model = model.read().unwrap();
+            if let Some(model) = model.as_ref() {
+                model.bind();
+                draw_model(
+                    gl_clone.clone(),
+                    program_clone.clone(),
+                    center_clone.clone(),
+                    rotation_clone.clone(),
+                    zoom_clone.clone(),
+                );
+            }
+        });
     }) as Box<dyn FnMut()>);
 
     canvas.add_event_listener_with_callback("mousemove", mouse_handler.as_ref().unchecked_ref())?;
@@ -233,12 +285,46 @@ pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     Ok(())
 }
 
+pub fn generate_grid(half_count: i32, spacing: f32) -> (Vec<Vertex>, Vec<u32>) {
+    let mut vertices: Vec<Vertex> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new(); // u16 is enough for ≤-65 535 verts
+
+    // unit +Y normal (0,1,0)
+    const N: [f32; 3] = [0.0, 1.0, 0.0];
+
+    // helper to push a vertex and return its index
+    let push_vert = |p: [f32; 3], verts: &mut Vec<Vertex>| -> u16 {
+        let idx = verts.len() as u16;
+        verts.push(Vertex(p, N));
+        idx
+    };
+
+    // horizontal (X-axis) lines – vary Z
+    for i in -half_count..=half_count {
+        let z = i as f32 * spacing;
+        let i0 = push_vert([-half_count as f32 * spacing, 0.0, z], &mut vertices) as u32;
+        let i1 = push_vert([half_count as f32 * spacing, 0.0, z], &mut vertices) as u32;
+        indices.extend_from_slice(&[i0, i1]);
+    }
+
+    // vertical (Z-axis) lines – vary X
+    for i in -half_count..=half_count {
+        let x = i as f32 * spacing;
+        let i0 = push_vert([x, 0.0, -half_count as f32 * spacing], &mut vertices) as u32;
+        let i1 = push_vert([x, 0.0, half_count as f32 * spacing], &mut vertices) as u32;
+        indices.extend_from_slice(&[i0, i1]);
+    }
+
+    (vertices, indices)
+}
+
 #[wasm_bindgen]
 pub fn toggle_wireframe() {
-    DRAW_WIREFRAME.with(|v| {
-        let mut draw_wireframe = v.write().unwrap();
-        *draw_wireframe = !*draw_wireframe;
-        *draw_wireframe
+    MODEL.with(|model| {
+        let mut model = model.write().unwrap();
+        if let Some(model) = model.as_mut() {
+            model.set_draw_wireframe(!model.get_draw_wireframe());
+        }
     });
 }
 
@@ -308,34 +394,28 @@ fn draw_model(
     );
 
     // Draw
-    let indices = INDICES.with(|i| i.read().unwrap().clone());
-    let indices_length = indices.len() as i32;
-    let draw_wireframe = DRAW_WIREFRAME.with(|v| v.read().unwrap().clone());
-    if draw_wireframe {
-        gl.draw_arrays(GL::LINES, 0, indices_length);
-    } else {
-        gl.draw_arrays(GL::TRIANGLES, 0, indices_length);
-    }
-}
-
-pub fn update_model(gl: GL) {
-    // Retrieve the vertices and indices from the global storage
-    let vertices = VERTICES.with(|v| v.read().unwrap().clone());
-    let indices = INDICES.with(|i| i.read().unwrap().clone());
-
-    // Create VBO
-    let vbo = unsafe { Buffer::new(&gl, GL::ARRAY_BUFFER) };
-    unsafe { vbo.set_data(&gl, vertices, GL::STATIC_DRAW) };
-
-    // Create VAO
-    let vao = unsafe { VertexArray::new(&gl) };
-    unsafe { set_attribute!(vao, gl, 0, Vertex::0) };
-    unsafe { set_attribute!(vao, gl, 1, Vertex::1) };
-
-    // Create index (element) buffer
-    let index_buffer = unsafe { Buffer::new(&gl, GL::ELEMENT_ARRAY_BUFFER) };
-    unsafe { index_buffer.set_data(&gl, indices, GL::STATIC_DRAW) };
-
-    // Bind the VBO to the VAO
-    unsafe { vao.bind(&gl) };
+    GRID.with(|model| {
+        let model = model.read().unwrap();
+        if let Some(model) = model.as_ref() {
+            model.bind();
+            let indices_length = model.get_indices_count() as i32;
+            if model.get_draw_wireframe() {
+                gl.draw_arrays(GL::LINES, 0, indices_length);
+            } else {
+                gl.draw_arrays(GL::TRIANGLES, 0, indices_length);
+            }
+        }
+    });
+    MODEL.with(|model| {
+        let model = model.read().unwrap();
+        if let Some(model) = model.as_ref() {
+            model.bind();
+            let indices_length = model.get_indices_count() as i32;
+            if model.get_draw_wireframe() {
+                gl.draw_arrays(GL::LINES, 0, indices_length);
+            } else {
+                gl.draw_arrays(GL::TRIANGLES, 0, indices_length);
+            }
+        }
+    });
 }

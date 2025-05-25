@@ -1,13 +1,11 @@
-use crate::global::{Norm, Pos, Vertex, INDICES, MODEL_LOADED, VERTICES};
-use crate::update_model;
+use crate::global::{Norm, Pos, Vertex, MODEL};
 use std::collections::HashMap;
 use std::io::BufReader;
 use wasm_bindgen::prelude::*;
 use wavefront_rs::obj::{entity::*, parser::*};
-use web_sys::WebGl2RenderingContext as GL;
 
 #[wasm_bindgen]
-pub fn process_file_content(content: &str, gl: GL) {
+pub fn process_file_content(content: &str) {
     // Log the file content to the browser console (for debugging)
     //web_sys::console::log_1(&format!("Received file content: {}", content).into());
 
@@ -61,26 +59,12 @@ pub fn process_file_content(content: &str, gl: GL) {
     })
     .unwrap();
 
-    // Store the vertices and indices in the global storage
-    VERTICES.with(|v| {
-        let mut global_vertices = v.write().unwrap();
-        *global_vertices = vertices;
+    // Update the model with the parsed vertices and indices
+    MODEL.with(|v| {
+        v.write()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .update_model(vertices, indices);
     });
-
-    INDICES.with(|i| {
-        let mut global_indices = i.write().unwrap();
-        *global_indices = indices;
-    });
-
-    MODEL_LOADED.with(|i| {
-        let mut loaded = i.write().unwrap();
-        *loaded = false;
-    });
-
-    // Log the number of indices for debugging
-    let indices_length = INDICES.with(|i| i.read().unwrap().len());
-    web_sys::console::log_1(&format!("INFO: number of model indices: {}", indices_length).into());
-
-    // Trigger the update_model function
-    update_model(gl);
 }
