@@ -63,7 +63,7 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     MODEL.with(|v| {
         let mut model = v.write().unwrap();
         let mut m = ModelObject::new(gl.clone());
-        m.set_color([1.0, 0.847, 0.0, 1.0]);
+        m.set_color([0.75, 0.75, 0.75, 1.0]);
         *model = Some(m);
     });
 
