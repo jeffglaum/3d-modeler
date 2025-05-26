@@ -46,7 +46,7 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 
     // Enable mouse controls
     let zoom = Rc::new(RefCell::new(15.0));
-    let rotation = Rc::new(RefCell::new((0.0, 0.0)));
+    let rotation = Rc::new(RefCell::new((35.264, -45.0)));
     let center_pos = Rc::new(RefCell::new((0.0, 0.0, 0.0)));
     enable_mouse_controls(canvas.clone(), rotation.clone())?;
 
@@ -189,32 +189,65 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 
     let key_handler = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
         if event.shift_key() && event.key() == "ArrowUp" {
-            // Handle Shift + ArrowUp
             let mut zoom = zoom.borrow_mut();
             *zoom -= 0.5;
-            *zoom = (*zoom as f32).max(1.0).min(50.0);
+            *zoom = (*zoom as f32).max(1.0).min(100.0);
         } else if event.shift_key() && event.key() == "ArrowDown" {
-            // Handle Shift + ArrowDown
             let mut zoom = zoom.borrow_mut();
             *zoom += 0.5;
-            *zoom = (*zoom as f32).max(1.0).min(50.0);
+            *zoom = (*zoom as f32).max(1.0).min(100.0);
         } else {
             match event.key().as_str() {
                 "ArrowLeft" => {
                     let mut center_pos = center_pos.borrow_mut();
-                    center_pos.0 -= 0.5;
+                    center_pos.0 -= 0.2;
                 }
                 "ArrowRight" => {
                     let mut center_pos = center_pos.borrow_mut();
-                    center_pos.0 += 0.5;
+                    center_pos.0 += 0.2;
                 }
                 "ArrowUp" => {
                     let mut center_pos = center_pos.borrow_mut();
-                    center_pos.1 += 0.5;
+                    center_pos.1 += 0.2;
                 }
                 "ArrowDown" => {
                     let mut center_pos = center_pos.borrow_mut();
-                    center_pos.1 -= 0.5;
+                    center_pos.1 -= 0.2;
+                }
+                "1" => {
+                    let mut rotation = rotation.borrow_mut();
+                    let mut zoom = zoom.borrow_mut();
+                    rotation.0 = 0.0;
+                    rotation.1 = 0.0;
+                    *zoom = 15.0;
+                }
+                "2" => {
+                    let mut rotation = rotation.borrow_mut();
+                    let mut zoom = zoom.borrow_mut();
+                    rotation.0 = 0.0;
+                    rotation.1 = -90.0;
+                    *zoom = 15.0;
+                }
+                "3" => {
+                    let mut rotation = rotation.borrow_mut();
+                    let mut zoom = zoom.borrow_mut();
+                    rotation.0 = 90.0;
+                    rotation.1 = 0.0;
+                    *zoom = 15.0;
+                }
+                "4" => {
+                    let mut rotation = rotation.borrow_mut();
+                    let mut zoom = zoom.borrow_mut();
+                    rotation.0 = 35.264;
+                    rotation.1 = -45.0;
+                    *zoom = 15.0;
+                }
+                "5" => {
+                    let mut rotation = rotation.borrow_mut();
+                    let mut zoom = zoom.borrow_mut();
+                    rotation.0 = 15.0;
+                    rotation.1 = -30.0;
+                    *zoom = 15.0;
                 }
                 _ => {}
             }
