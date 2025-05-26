@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-//import init, { start_rendering, handle_mouse_click } from 'rust-renderer'; // from WASM
 import init, * as wasm from 'rust-renderer';
 import { AppBar, Toolbar, Button, Menu, MenuItem } from '@mui/material';
 
@@ -33,26 +32,23 @@ function DropdownAppBar() {
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (file) {
-      //console.log("Selected file:", file.name);
       const reader = new FileReader();
       reader.onload = (e) => {
-        const fileContent = e.target.result; // File content as a string
-        //console.log("File content:", fileContent);
+        const fileContent = e.target.result;
 
-        // Call the Rust WebAssembly function
         if (window.wasm && window.wasm.process_file_content) {
           window.wasm.process_file_content(fileContent);
         } else {
           console.error("Rust WebAssembly function not found!");
         }
       };
-      reader.readAsText(file); // Read the file as text
+      reader.readAsText(file);
     }
   };
 
   const handleToggleWireframe = () => {
     if (window.wasm && window.wasm.toggle_wireframe) {
-      window.wasm.toggle_wireframe(); // Call the Rust WASM function
+      window.wasm.toggle_wireframe();
     } else {
       console.error("Rust WebAssembly function 'toggle_wireframe' not found!");
     }
@@ -119,10 +115,8 @@ function App() {
       }
     };
 
-    // Set initial canvas size
     resizeCanvas();
 
-    // Listen for window resize events
     window.addEventListener('resize', resizeCanvas);
 
     const run = async () => {
@@ -130,12 +124,12 @@ function App() {
       window.wasm = wasm;
 
       if (canvas) {
-        wasm.start_rendering(canvas);
+        wasm.main(canvas);
       }
     };
     run();
 
-    // Cleanup event listener on unmount
+    // cleanup event listener on unmount
     return () => {
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';

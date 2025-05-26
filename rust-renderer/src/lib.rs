@@ -40,7 +40,7 @@ macro_rules! set_attribute {
 }
 
 #[wasm_bindgen]
-pub fn start_rendering(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
+pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
     let gl: GL = canvas.get_context("webgl2")?.unwrap().dyn_into::<GL>()?;
 
