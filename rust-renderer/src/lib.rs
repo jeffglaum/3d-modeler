@@ -197,56 +197,52 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
             *zoom += 0.5;
             *zoom = (*zoom as f32).max(1.0).min(100.0);
         } else {
+            let mut center_pos = center_pos.borrow_mut();
+            let mut rotation = rotation.borrow_mut();
+            let mut zoom = zoom.borrow_mut();
             match event.key().as_str() {
                 "ArrowLeft" => {
-                    let mut center_pos = center_pos.borrow_mut();
-                    center_pos.0 -= 0.2;
+                    center_pos.0 -= 0.1;
                 }
                 "ArrowRight" => {
-                    let mut center_pos = center_pos.borrow_mut();
-                    center_pos.0 += 0.2;
+                    center_pos.0 += 0.1;
                 }
                 "ArrowUp" => {
-                    let mut center_pos = center_pos.borrow_mut();
-                    center_pos.1 += 0.2;
+                    center_pos.1 += 0.1;
                 }
                 "ArrowDown" => {
-                    let mut center_pos = center_pos.borrow_mut();
-                    center_pos.1 -= 0.2;
+                    center_pos.1 -= 0.1;
                 }
                 "1" => {
-                    let mut rotation = rotation.borrow_mut();
-                    let mut zoom = zoom.borrow_mut();
                     rotation.0 = 0.0;
                     rotation.1 = 0.0;
+                    center_pos.0 = 0.0;
+                    center_pos.1 = 0.0;
+                    center_pos.2 = 0.0;
                     *zoom = 15.0;
                 }
                 "2" => {
-                    let mut rotation = rotation.borrow_mut();
-                    let mut zoom = zoom.borrow_mut();
                     rotation.0 = 0.0;
                     rotation.1 = -90.0;
+                    center_pos.0 = 0.0;
+                    center_pos.1 = 0.0;
+                    center_pos.2 = 0.0;
                     *zoom = 15.0;
                 }
                 "3" => {
-                    let mut rotation = rotation.borrow_mut();
-                    let mut zoom = zoom.borrow_mut();
                     rotation.0 = 90.0;
                     rotation.1 = 0.0;
+                    center_pos.0 = 0.0;
+                    center_pos.1 = 0.0;
+                    center_pos.2 = 0.0;
                     *zoom = 15.0;
                 }
                 "4" => {
-                    let mut rotation = rotation.borrow_mut();
-                    let mut zoom = zoom.borrow_mut();
                     rotation.0 = 35.264;
                     rotation.1 = -45.0;
-                    *zoom = 15.0;
-                }
-                "5" => {
-                    let mut rotation = rotation.borrow_mut();
-                    let mut zoom = zoom.borrow_mut();
-                    rotation.0 = 15.0;
-                    rotation.1 = -30.0;
+                    center_pos.0 = 0.0;
+                    center_pos.1 = 0.0;
+                    center_pos.2 = 0.0;
                     *zoom = 15.0;
                 }
                 _ => {}
@@ -377,13 +373,29 @@ fn draw_model(
     // Retrieve the current rotation angles
     let (x_rotation, y_rotation) = *rotation.borrow();
 
-    // Update the view matrix based on rotation
-    let view = Matrix4::look_at_rh(
-        Point3::new(0.0, 0.0, *zoom.borrow()),
-        Point3::new(center.borrow().0, center.borrow().1, center.borrow().2),
-        Vector3::unit_y(),
-    ) * Matrix4::from_angle_x(Deg(x_rotation as f32))
+    // Retrieve the current translation (center position)
+    let (center_x, center_y, center_z) = *center.borrow();
+
+    // Create the rotation matrix
+    let rotation_matrix = Matrix4::from_angle_x(Deg(x_rotation as f32))
         * Matrix4::from_angle_y(Deg(y_rotation as f32));
+
+    // Transform the translation vector by the inverse of the rotation matrix
+    let inverse_rotation_matrix = rotation_matrix.invert().unwrap();
+    let transformed_translation =
+        inverse_rotation_matrix * Vector3::new(center_x, center_y, center_z).extend(1.0);
+
+    // Update the view matrix
+    let view = Matrix4::look_at_rh(
+        Point3::new(0.0, 0.0, *zoom.borrow()), // Camera position
+        Point3::new(0.0, 0.0, 0.0),            // Look-at target
+        Vector3::unit_y(),                     // Up vector
+    ) * rotation_matrix
+        * Matrix4::from_translation(Vector3::new(
+            transformed_translation.x,
+            transformed_translation.y,
+            transformed_translation.z,
+        )); // Apply transformed translation last
 
     // Update the shader program with the view matrix
     gl.use_program(Some(&program));
@@ -429,9 +441,9 @@ fn draw_model(
     );
 
     let object_color_loc = gl
-    .get_uniform_location(&program, "objectColor")
-    .ok_or("ERROR: could not get objectColor uniform location")
-    .unwrap();
+        .get_uniform_location(&program, "objectColor")
+        .ok_or("ERROR: could not get objectColor uniform location")
+        .unwrap();
 
     // Draw
     GRID.with(|model| {
