@@ -57,7 +57,7 @@ function DropdownAppBar() {
 
   return (
         <>
-    <AppBar position="fixed" style={{width: '100%'}}>
+    <AppBar position="sticky" style={{width: 'calc(100vw - 16px)', backgroundColor: '#262626', margin: 0, padding: 0, boxSizing: 'border-box'}}>
       <Toolbar>
         <Button
           color="inherit"
@@ -137,26 +137,8 @@ function App() {
     };
   }, []);
 
-  const handleClick = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const canvas = canvasRef.current;
-    if (canvas) {
-      wasm.start_rendering(canvas);
-    }
-
-    if (window.wasm && window.wasm.handle_mouse_click) {
-      window.wasm.handle_mouse_click(x, y);
-    }
-  };
-
   return (
-    <div
-      className="w-full bg-gray-100 flex justify-start"
-      style={{ margin: 0, padding: 0, height: '100vh', width: '100vw' }}
-    >
+    <div style={{height: 'calc(100vh - 16px)'}}>
       <DropdownAppBar />
       <canvas ref={canvasRef} />
     </div>
