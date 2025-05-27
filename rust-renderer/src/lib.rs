@@ -359,6 +359,20 @@ pub fn toggle_wireframe() {
     });
 }
 
+#[wasm_bindgen]
+pub fn set_model_color(color: js_sys::Array) {
+    let r = color.get(0).as_f64().unwrap_or(0.75) as f32;
+    let g = color.get(1).as_f64().unwrap_or(0.75) as f32;
+    let b = color.get(2).as_f64().unwrap_or(0.75) as f32;
+    let a = color.get(3).as_f64().unwrap_or(1.0) as f32;
+    MODEL.with(|model| {
+        let mut model = model.write().unwrap();
+        if let Some(model) = model.as_mut() {
+            model.set_color([r, g, b, a]);
+        }
+    });
+}
+
 fn draw_model(
     gl: GL,
     program: WebGlProgram,

@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import init, * as wasm from 'rust-renderer';
-import { AppBar, Toolbar, Button, Menu, MenuItem } from '@mui/material';
+import { AppBar, Toolbar, Button, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { SketchPicker } from 'react-color'; // npm install react-color
 
-function DropdownAppBar() {
+function DropdownAppBar({ onModelColorClick }) {
 
   const fileInputRef = useRef(null);
   const [fileMenuAnchorEl, setFileMenuAnchorEl] = React.useState(null);
@@ -84,6 +85,14 @@ function DropdownAppBar() {
           onClose={handleDrawMenuClose}
         >
           <MenuItem onClick={handleToggleWireframe}>Toggle Wireframe</MenuItem>
+          <MenuItem
+            onClick={() => {
+              onModelColorClick();
+              handleDrawMenuClose();
+            }}
+          >
+            Model Color
+          </MenuItem>
         </Menu>
       </Toolbar>
     </AppBar>
@@ -100,6 +109,8 @@ function DropdownAppBar() {
 }
 function App() {
   const canvasRef = useRef(null);
+  const [colorDialogOpen, setColorDialogOpen] = useState(false);
+  const [modelColor, setModelColor] = useState({ r: 192, g: 192, b: 192, a: 1 });
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -137,10 +148,38 @@ function App() {
     };
   }, []);
 
+  const handleModelColorClick = () => {
+    setColorDialogOpen(true);
+  };
+
+  const handleColorChange = (color) => {
+    setModelColor(color.rgb);
+    if (window.wasm && window.wasm.set_model_color) {
+      // Send color as [r, g, b, a] in 0..1
+      window.wasm.set_model_color([
+        color.rgb.r / 255,
+        color.rgb.g / 255,
+        color.rgb.b / 255,
+        color.rgb.a
+      ]);
+    }
+  };
+
   return (
     <div style={{height: 'calc(100vh - 16px)'}}>
-      <DropdownAppBar />
+      <DropdownAppBar onModelColorClick={handleModelColorClick} />
       <canvas ref={canvasRef} />
+      <Dialog open={colorDialogOpen} onClose={() => setColorDialogOpen(false)}>
+        <DialogTitle>Pick Model Color</DialogTitle>
+        <DialogContent>
+          <SketchPicker color={modelColor} onChange={handleColorChange} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setColorDialogOpen(false)} color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }
