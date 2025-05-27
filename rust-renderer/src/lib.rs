@@ -64,6 +64,7 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         let mut model = v.write().unwrap();
         let mut m = ModelObject::new(gl.clone());
         m.set_color([0.75, 0.75, 0.75, 1.0]);
+        m.set_draw_wireframe(false);
         *model = Some(m);
     });
 
@@ -401,9 +402,9 @@ fn draw_model(
 
     // Update the view matrix
     let view = Matrix4::look_at_rh(
-        Point3::new(0.0, 0.0, *zoom.borrow()), // Camera position
-        Point3::new(0.0, 0.0, 0.0),            // Look-at target
-        Vector3::unit_y(),                     // Up vector
+        Point3::new(0.0, 0.0, *zoom.borrow()),
+        Point3::new(0.0, 0.0, 0.0),
+        Vector3::unit_y(),
     ) * rotation_matrix
         * Matrix4::from_translation(Vector3::new(
             transformed_translation.x,
