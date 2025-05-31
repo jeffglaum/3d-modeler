@@ -20,6 +20,7 @@ web-sys = { version = "0.3", features = [
     "WebGlVertexArrayObject",
     "MouseEvent",
     "KeyboardEvent",
+    "WheelEvent",
     "console",
     ] }
 js-sys = "0.3"

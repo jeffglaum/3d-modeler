@@ -48,7 +48,7 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let zoom = Rc::new(RefCell::new(15.0));
     let rotation = Rc::new(RefCell::new((35.264, -45.0)));
     let center_pos = Rc::new(RefCell::new((0.0, 0.0, 0.0)));
-    enable_mouse_controls(canvas.clone(), rotation.clone())?;
+    enable_mouse_controls(canvas.clone())?;
 
     // Create grid object
     GRID.with(|v| {
@@ -181,12 +181,11 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.clear_color(0.0, 0.0, 0.0, 1.0);
     gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
 
-    // Add mouse swipe listener
-    let gl_clone = gl.clone();
-    let program_clone = program.clone();
-    let center_clone = center_pos.clone();
-    let rotation_clone = rotation.clone();
-    let zoom_clone = zoom.clone();
+    let gl_wheel = gl.clone();
+    let program_wheel = program.clone();
+    let center_wheel = center_pos.clone();
+    let rotation_wheel = rotation.clone();
+    let zoom_wheel = zoom.clone();
 
     let key_handler = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
         if event.shift_key() && event.key() == "ArrowUp" {
@@ -278,17 +277,34 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         });
     }) as Box<dyn FnMut(_)>);
 
-    let mouse_handler = Closure::wrap(Box::new(move || {
+    let wheel_handler = Closure::wrap(Box::new(move |event: web_sys::WheelEvent| {
+        //web_sys::console::log_1(&format!("X").into());
+
+        // Only handle if ctrlKey is not pressed (not pinch-zoom)
+        if !event.ctrl_key() {
+            event.prevent_default();
+
+            let dx = event.delta_x();
+            let dy = event.delta_y();
+
+            // Sensitivity factor, adjust as needed
+            let sensitivity = 0.1;
+
+            let mut rot = rotation_wheel.borrow_mut();
+            rot.0 += dy * sensitivity;
+            rot.1 += dx * sensitivity;
+        }
+
         GRID.with(|model| {
             let model = model.read().unwrap();
             if let Some(model) = model.as_ref() {
                 model.bind();
                 draw_model(
-                    gl_clone.clone(),
-                    program_clone.clone(),
-                    center_clone.clone(),
-                    rotation_clone.clone(),
-                    zoom_clone.clone(),
+                    gl_wheel.clone(),
+                    program_wheel.clone(),
+                    center_wheel.clone(),
+                    rotation_wheel.clone(),
+                    zoom_wheel.clone(),
                 );
             }
         });
@@ -297,21 +313,21 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
             if let Some(model) = model.as_ref() {
                 model.bind();
                 draw_model(
-                    gl_clone.clone(),
-                    program_clone.clone(),
-                    center_clone.clone(),
-                    rotation_clone.clone(),
-                    zoom_clone.clone(),
+                    gl_wheel.clone(),
+                    program_wheel.clone(),
+                    center_wheel.clone(),
+                    rotation_wheel.clone(),
+                    zoom_wheel.clone(),
                 );
             }
         });
-    }) as Box<dyn FnMut()>);
+    }) as Box<dyn FnMut(_)>);
 
-    canvas.add_event_listener_with_callback("mousemove", mouse_handler.as_ref().unchecked_ref())?;
+    canvas.add_event_listener_with_callback("wheel", wheel_handler.as_ref().unchecked_ref())?;
+    wheel_handler.forget();
     window()
         .unwrap()
         .add_event_listener_with_callback("keydown", key_handler.as_ref().unchecked_ref())?;
-    mouse_handler.forget();
     key_handler.forget();
 
     Ok(())
