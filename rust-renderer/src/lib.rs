@@ -14,7 +14,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::window;
-use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram};
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlProgram, EventTarget, CustomEvent};
 
 use crate::input::enable_mouse_controls;
 use crate::matrix::matrix4_to_array;
@@ -181,11 +181,13 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     gl.clear_color(0.0, 0.0, 0.0, 1.0);
     gl.clear(GL::COLOR_BUFFER_BIT | GL::DEPTH_BUFFER_BIT);
 
-    let gl_wheel = gl.clone();
-    let program_wheel = program.clone();
-    let center_wheel = center_pos.clone();
+    let gl_draw = gl.clone();
+    let program_draw = program.clone();
+    let center_draw = center_pos.clone();
+    let rotation_draw = rotation.clone();
+    let zoom_draw = zoom.clone();
+
     let rotation_wheel = rotation.clone();
-    let zoom_wheel = zoom.clone();
 
     let key_handler = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
         if event.shift_key() && event.key() == "ArrowUp" {
@@ -202,16 +204,16 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
             let mut zoom = zoom.borrow_mut();
             match event.key().as_str() {
                 "ArrowLeft" => {
-                    center_pos.0 -= 0.1;
-                }
-                "ArrowRight" => {
                     center_pos.0 += 0.1;
                 }
+                "ArrowRight" => {
+                    center_pos.0 -= 0.1;
+                }
                 "ArrowUp" => {
-                    center_pos.1 += 0.1;
+                    center_pos.1 -= 0.1;
                 }
                 "ArrowDown" => {
-                    center_pos.1 -= 0.1;
+                    center_pos.1 += 0.1;
                 }
                 "1" => {
                     rotation.0 = 0.0;
@@ -249,32 +251,9 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
             }
         }
 
-        GRID.with(|model| {
-            let model = model.read().unwrap();
-            if let Some(model) = model.as_ref() {
-                model.bind();
-                draw_model(
-                    gl.clone(),
-                    program.clone(),
-                    center_pos.clone(),
-                    rotation.clone(),
-                    zoom.clone(),
-                );
-            }
-        });
-        MODEL.with(|model| {
-            let model = model.read().unwrap();
-            if let Some(model) = model.as_ref() {
-                model.bind();
-                draw_model(
-                    gl.clone(),
-                    program.clone(),
-                    center_pos.clone(),
-                    rotation.clone(),
-                    zoom.clone(),
-                );
-            }
-        });
+        // Trigger a custom event to redraw the scene
+        trigger_draw_event();
+
     }) as Box<dyn FnMut(_)>);
 
     let wheel_handler = Closure::wrap(Box::new(move |event: web_sys::WheelEvent| {
@@ -295,32 +274,9 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
             rot.1 += dx * sensitivity;
         }
 
-        GRID.with(|model| {
-            let model = model.read().unwrap();
-            if let Some(model) = model.as_ref() {
-                model.bind();
-                draw_model(
-                    gl_wheel.clone(),
-                    program_wheel.clone(),
-                    center_wheel.clone(),
-                    rotation_wheel.clone(),
-                    zoom_wheel.clone(),
-                );
-            }
-        });
-        MODEL.with(|model| {
-            let model = model.read().unwrap();
-            if let Some(model) = model.as_ref() {
-                model.bind();
-                draw_model(
-                    gl_wheel.clone(),
-                    program_wheel.clone(),
-                    center_wheel.clone(),
-                    rotation_wheel.clone(),
-                    zoom_wheel.clone(),
-                );
-            }
-        });
+        // Trigger a custom event to redraw the scene
+        trigger_draw_event();
+
     }) as Box<dyn FnMut(_)>);
 
     canvas.add_event_listener_with_callback("wheel", wheel_handler.as_ref().unchecked_ref())?;
@@ -330,7 +286,54 @@ pub fn main(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
         .add_event_listener_with_callback("keydown", key_handler.as_ref().unchecked_ref())?;
     key_handler.forget();
 
+    let draw = Closure::wrap(Box::new(move |_event: web_sys::CustomEvent| {
+    web_sys::console::log_1(&"draw event triggered!".into());
+     GRID.with(|model| {
+            let model = model.read().unwrap();
+            if let Some(model) = model.as_ref() {
+                model.bind();
+                draw_model(
+                    gl_draw.clone(),
+                    program_draw.clone(),
+                    center_draw.clone(),
+                    rotation_draw.clone(),
+                    zoom_draw.clone(),
+                );
+            }
+        });
+        MODEL.with(|model| {
+            let model = model.read().unwrap();
+            if let Some(model) = model.as_ref() {
+                model.bind();
+                draw_model(
+                    gl_draw.clone(),
+                    program_draw.clone(),
+                    center_draw.clone(),
+                    rotation_draw.clone(),
+                    zoom_draw.clone(),
+                );
+            }
+        });
+}) as Box<dyn FnMut(_)>);
+
+let window = window().unwrap();
+let target: &EventTarget = window.as_ref();
+target
+    .add_event_listener_with_callback("draw-event", draw.as_ref().unchecked_ref())
+    .unwrap();
+draw.forget();
+
+    // Initial draw
+    trigger_draw_event();
+
     Ok(())
+}
+
+pub fn trigger_draw_event() {
+    let window = window().unwrap();
+    let target: &EventTarget = window.as_ref();
+    let draw_event = CustomEvent::new("draw-event").unwrap();
+    target.dispatch_event(&draw_event).unwrap();
 }
 
 pub fn generate_grid(half_count: i32, spacing: f32) -> (Vec<Vertex>, Vec<u32>) {
@@ -374,6 +377,9 @@ pub fn toggle_wireframe() {
             model.set_draw_wireframe(!model.get_draw_wireframe());
         }
     });
+
+    // Trigger a custom event to redraw the scene
+    trigger_draw_event();
 }
 
 #[wasm_bindgen]
@@ -388,6 +394,9 @@ pub fn set_model_color(color: js_sys::Array) {
             model.set_color([r, g, b, a]);
         }
     });
+
+    // Trigger a custom event to redraw the scene
+    trigger_draw_event();
 }
 
 fn draw_model(

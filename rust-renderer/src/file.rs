@@ -1,4 +1,4 @@
-use crate::global::{Norm, Pos, Vertex, MODEL};
+use crate::{global::{Norm, Pos, Vertex, MODEL}, trigger_draw_event};
 use std::collections::HashMap;
 use std::io::BufReader;
 use wasm_bindgen::prelude::*;
@@ -67,4 +67,8 @@ pub fn process_file_content(content: &str) {
             .unwrap()
             .update_model(vertices, indices);
     });
+
+    // Trigger a re-render of the model
+    trigger_draw_event();
+
 }
